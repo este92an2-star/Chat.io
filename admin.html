@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administration — Messagerie</title>
+<style>
+:root{--bg:#080b13;--panel:#101522;--panel2:#151b2a;--text:#edf2ff;--muted:#8994aa;--line:#232c40;--accent:#6c5ce7;--danger:#ef476f;--ok:#20bf6b;--shadow:0 20px 60px rgba(0,0,0,.35)}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 10% 0%,rgba(108,92,231,.18),transparent 30%),var(--bg);color:var(--text);min-height:100vh}
+button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{display:flex;align-items:center;gap:12px;margin-bottom:24px}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(135deg,var(--accent),#00c2ff);display:grid;place-items:center;font-weight:900;color:#fff}.top h1{margin:0}.top small{color:var(--muted)}.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:10px 14px;cursor:pointer}.btn.primary{background:linear-gradient(135deg,var(--accent),#8e7cff);border:0;color:#fff}.btn.danger{background:var(--danger);border:0;color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);margin-bottom:18px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.stat{background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:18px}.stat b{font-size:28px;display:block}.stat span{color:var(--muted)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.list{max-height:430px;overflow:auto}.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),#00b8f5);color:#fff;font-weight:800;flex:none}.info{min-width:0;flex:1}.info b,.info small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.info small{color:var(--muted)}.empty{color:var(--muted);padding:20px 0}.login{min-height:100vh;display:grid;place-items:center;padding:20px}.login .card{width:min(420px,94vw)}.card input{width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:8px 0 14px;outline:none}.hidden{display:none!important}.warning{color:#ffd166;background:#ffd16612;border:1px solid #ffd16644;border-radius:12px;padding:12px;margin-bottom:18px;font-size:13px}
+@media(max-width:800px){.stats,.grid{grid-template-columns:1fr}.wrap{padding:16px}}
+</style>
+</head>
+<body>
+<div id="gate" class="login">
+  <div class="card">
+    <div class="top"><div class="logo">⚙</div><div><h1>Administration</h1><small>Accès protégé</small></div></div>
+    <p style="color:var(--muted)">Connectez-vous avec votre compte puis entrez le code administrateur.</p>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Mot de passe">
+    <input id="adminCode" type="password" inputmode="numeric" maxlength="4" placeholder="Code administrateur">
+    <button class="btn primary" id="loginAdmin" style="width:100%">Entrer</button>
+    <p id="status" style="color:var(--muted);font-size:13px"></p>
+  </div>
+</div>
+
+<div id="admin" class="hidden">
+  <div class="wrap">
+    <header class="top">
+      <div class="logo">⚙</div><div><h1>Centre d’administration</h1><small id="adminEmail">—</small></div>
+      <div class="spacer"></div>
+      <button class="btn" id="refresh">↻ Actualiser</button>
+      <button class="btn" id="back">← Messagerie</button>
+      <button class="btn" id="logout">↪</button>
+    </header>
+
+    <div class="warning">⚠️ Le code <b>0723</b> est intégré à cette page HTML. Il sert de verrou d’interface, mais ce n’est pas une authentification administrateur sécurisée côté serveur.</div>
+
+    <section class="stats">
+      <div class="stat"><b id="userCount">0</b><span>Utilisateurs</span></div>
+      <div class="stat"><b id="conversationCount">0</b><span>Conversations</span></div>
+      <div class="stat"><b id="groupCount">0</b><span>Groupes</span></div>
+    </section>
+
+    <div class="grid" style="margin-top:18px">
+      <section class="card"><h2>👤 Utilisateurs</h2><div id="users" class="list"><div class="empty">Chargement…</div></div></section>
+      <section class="card"><h2>💬 Conversations</h2><div id="conversations" class="list"><div class="empty">Chargement…</div></div></section>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import {getFirestore,collection,getDocs,deleteDoc,doc} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:"AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
+  authDomain:"messagerie-cd2ba.firebaseapp.com",
+  databaseURL:"https://messagerie-cd2ba-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:"messagerie-cd2ba",
+  storageBucket:"messagerie-cd2ba.firebasestorage.app",
+  messagingSenderId:"846140280738",
+  appId:"1:846140280738:web:03a0fb23ca8fa0e59bacfb",
+  measurementId:"G-S8CC69WLD4"
+};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+const initials=s=>String(s||"?").split(/[ @]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+
+$("loginAdmin").onclick=async()=>{
+  try{
+    $("status").textContent="Connexion…";
+    if($("adminCode").value!=="0723") throw new Error("Code administrateur incorrect.");
+    await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);
+  }catch(e){$("status").textContent=e.message}
+};
+$("back").onclick=()=>location.href="messagerie-futuriste-admin.html";
+$("logout").onclick=()=>signOut(auth);
+$("refresh").onclick=loadDashboard;
+
+onAuthStateChanged(auth,async user=>{
+  if(!user){$("gate").classList.remove("hidden");$("admin").classList.add("hidden");return}
+  // Le code doit être saisi à chaque entrée dans la page.
+  if(sessionStorage.getItem("adminUnlocked")!=="1"){
+    $("gate").classList.remove("hidden");$("admin").classList.add("hidden");return;
+  }
+  showAdmin(user);
+});
+
+$("loginAdmin").addEventListener("click",()=>{
+  if($("adminCode").value==="0723") sessionStorage.setItem("adminUnlocked","1");
+});
+
+async function showAdmin(user){
+  $("gate").classList.add("hidden");$("admin").classList.remove("hidden");$("adminEmail").textContent=user.email||user.uid;
+  await loadDashboard();
+}
+async function loadDashboard(){
+  try{
+    const [uSnap,cSnap]=await Promise.all([getDocs(collection(db,"users")),getDocs(collection(db,"conversations"))]);
+    const users=[];uSnap.forEach(d=>users.push({id:d.id,...d.data()}));
+    const conversations=[];cSnap.forEach(d=>conversations.push({id:d.id,...d.data()}));
+    $("userCount").textContent=users.length;
+    $("conversationCount").textContent=conversations.length;
+    $("groupCount").textContent=conversations.filter(c=>c.type==="group").length;
+    renderUsers(users);renderConversations(conversations);
+  }catch(e){alert("Erreur de chargement : "+e.message)}
+}
+function renderUsers(list){
+  $("users").innerHTML=list.length?list.map(u=>`<div class="row"><div class="avatar">${initials(u.displayName||u.email)}</div><div class="info"><b>${esc(u.displayName||"Utilisateur")}</b><small>${esc(u.email||u.uid)}</small></div></div>`).join(""):'<div class="empty">Aucun utilisateur.</div>';
+}
+function renderConversations(list){
+  $("conversations").innerHTML=list.length?list.map(c=>{
+    const label=c.type==="group"?(c.name||"Groupe"):(c.memberEmails||[]).join(" ↔ ")||"Conversation privée";
+    return `<div class="row"><div class="avatar">${c.type==="group"?"👥":"💬"}</div><div class="info"><b>${esc(label)}</b><small>${c.type==="group"?"Groupe":"Privée"} · ${esc(c.id)}</small></div><button class="btn danger" data-del="${esc(c.id)}">Supprimer</button></div>`;
+  }).join(""):'<div class="empty">Aucune conversation.</div>';
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.del;
+    if(!confirm("Supprimer cette conversation ? Les sous-collections de messages ne sont pas supprimées par cette action."))return;
+    try{await deleteDoc(doc(db,"conversations",id));await loadDashboard()}catch(e){alert("Suppression impossible : "+e.message)}
+  });
+}
+</script>
+</body>
+</html>

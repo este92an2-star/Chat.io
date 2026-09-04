@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Messagerie — Firebase</title>
+  <style>
+    :root{
+      --bg:#eef2f7;--panel:#ffffff;--panel2:#f6f8fb;--text:#142033;--muted:#718096;
+      --line:#dfe6ef;--accent:#6c5ce7;--accent2:#00c2ff;--bubble:#eef0ff;--mine:#6c5ce7;
+      --mineText:#fff;--danger:#ef476f;--shadow:0 20px 60px rgba(31,41,55,.12)
+    }
+    [data-theme="dark"]{
+      --bg:#080b13;--panel:#101522;--panel2:#151b2a;--text:#edf2ff;--muted:#8994aa;
+      --line:#232c40;--bubble:#1a2132;--mine:#6957e8;--mineText:#fff;--shadow:0 20px 60px rgba(0,0,0,.35)
+    }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:
+      radial-gradient(circle at 10% 0%,rgba(108,92,231,.16),transparent 30%),var(--bg);color:var(--text);height:100vh;overflow:hidden}
+    button,input{font:inherit}.app{height:100vh;display:grid;grid-template-columns:330px 1fr;max-width:1500px;margin:auto}
+    .sidebar{background:color-mix(in srgb,var(--panel) 94%,transparent);border-right:1px solid var(--line);display:flex;flex-direction:column}
+    .brand{padding:22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+    .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:white;font-weight:900;box-shadow:0 8px 25px #6c5ce755}
+    .brand b{font-size:18px}.brand small{display:block;color:var(--muted)}
+    .toolbar{padding:14px;display:flex;gap:8px}.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:10px 12px;cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#8e7cff);border:0;color:white}.btn:hover{filter:brightness(1.05)}
+    .search{margin:0 14px 10px;display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:0 12px}
+    .search input{width:100%;padding:11px 6px;border:0;outline:0;background:transparent;color:var(--text)}
+    #chats{overflow:auto;padding:6px 8px}.chat{display:flex;gap:12px;padding:12px;border-radius:14px;cursor:pointer;align-items:center}.chat:hover,.chat.active{background:var(--panel2)}
+    .palette{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:15px 0}.palette button{height:42px;border:2px solid transparent;border-radius:12px;cursor:pointer}
+    .callPanel{position:fixed;right:22px;bottom:90px;width:min(360px,calc(100vw - 44px));background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:var(--shadow);z-index:30;text-align:center}
+    .callAvatar{width:82px;height:82px;margin:8px auto 12px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;font-size:26px;font-weight:800}
+    .callTimer{color:var(--muted);margin:6px}.callBtns{display:flex;justify-content:center;gap:10px;margin-top:16px}.callBtns .btn{width:48px;height:48px;border-radius:50%}
+    .avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#7c6cff,#00b8f5);color:white;font-weight:800;flex:none}
+    .chatInfo{min-width:0;flex:1}.chatInfo b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chatInfo small{color:var(--muted)}
+    .main{display:grid;grid-template-rows:auto 1fr auto;background:rgba(255,255,255,.02);min-width:0}
+    .header{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:var(--panel)}
+    .headerInfo{flex:1}.headerInfo b{display:block}.headerInfo small{color:#27b98a}.headerActions{display:flex;gap:8px}
+    #messages{overflow:auto;padding:25px;display:flex;flex-direction:column;gap:9px}
+    .day{text-align:center;color:var(--muted);font-size:12px;margin:8px}.msgRow{display:flex;max-width:75%;position:relative}.msgRow.mine{margin-left:auto}.bubble{background:var(--bubble);padding:9px 12px;border-radius:15px 15px 15px 4px;box-shadow:0 4px 18px rgba(0,0,0,.04)}
+    .mine .bubble{background:var(--mine);color:var(--mineText);border-radius:15px 15px 4px 15px}.meta{font-size:10px;opacity:.65;margin-top:5px;text-align:right}.bubble img{max-width:280px;border-radius:10px;display:block}.bubble audio{max-width:260px}
+    .file{display:flex;gap:10px;align-items:center}.file a{color:inherit}.empty{margin:auto;color:var(--muted);text-align:center}
+    .composer{padding:13px 18px;border-top:1px solid var(--line);background:var(--panel);display:flex;gap:8px;align-items:center}.composer input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:14px;padding:12px 14px;outline:0}
+    .round{width:44px;height:44px;border-radius:50%;padding:0;display:grid;place-items:center}.recording{background:var(--danger)!important;color:white!important}
+    .login{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}.card{width:min(430px,92vw);background:var(--panel);border:1px solid var(--line);padding:28px;border-radius:24px;box-shadow:var(--shadow)}
+    .card h1{margin-top:0}.card input{width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:7px 0 12px}.card button{width:100%;padding:12px}
+    .hidden{display:none!important}.modal{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:20}.modal .card{position:relative}.close{position:absolute;right:16px;top:14px}
+    @media(max-width:800px){.app{grid-template-columns:1fr}.sidebar{display:none}.sidebar.mobile{display:flex;position:fixed;inset:0;z-index:5;width:85%}.main{height:100vh}.msgRow{max-width:88%}}
+  </style>
+</head>
+<body>
+<div id="login" class="login">
+  <div class="card">
+    <h1>✦ Messagerie</h1>
+    <p style="color:var(--muted)">Messagerie futuriste, privée et basée sur Firebase.</p>
+    <label>Email</label><input id="email" type="email" placeholder="vous@exemple.com">
+    <label>Mot de passe</label><input id="password" type="password" placeholder="••••••••">
+    <button id="authBtn" class="btn primary">Se connecter / créer un compte</button>
+    <p id="authStatus" style="color:var(--muted);font-size:13px"></p>
+  </div>
+</div>
+
+<div class="app">
+  <aside id="sidebar" class="sidebar">
+    <div class="brand"><div class="logo">✦</div><div><b>Messagerie</b><small>Firebase • privé</small></div></div>
+    <div class="toolbar"><button class="btn primary" id="newChat">＋ Discussion</button><button class="btn" id="newGroup">＋ Groupe</button></div>
+    <div class="search"><span>⌕</span><input id="search" placeholder="Rechercher…"></div>
+    <div id="chats"></div>
+    <div style="padding:14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">🎨</button><button class="btn" id="goAdmin">⚙ Admin</button><button class="btn" id="logout">↪</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="header">
+      <button class="btn round" id="mobileMenu">☰</button>
+      <div id="headerAvatar" class="avatar">?</div><div class="headerInfo"><b id="headerName">Sélectionnez une conversation</b><small id="headerStatus">—</small></div>
+      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="deleteConversation">🗑</button></div>
+    </header>
+    <section id="messages"><div class="empty">Choisissez une conversation ou créez-en une.</div></section>
+    <footer class="composer">
+      <input id="messageInput" placeholder="Écrire un message…" autocomplete="off">
+      <input id="fileInput" type="file" accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip" class="hidden">
+      <button class="btn round" id="attach" title="Photo/fichier">＋</button>
+      <button class="btn round" id="voice" title="Vocal">🎙</button>
+      <button class="btn primary round" id="send">➤</button>
+    </footer>
+  </main>
+</div>
+
+<div id="modal" class="modal hidden"><div class="card"><button class="btn close" id="closeModal">×</button><h2 id="modalTitle">Nouvelle discussion</h2><p id="modalHelp" style="color:var(--muted)"></p><input id="modalInput" placeholder="Email de l'utilisateur"><button class="btn primary" id="modalOk">Créer</button></div></div>
+<div id="customModal" class="modal hidden"><div class="card"><button class="btn close" id="closeCustom">×</button><h2>🎨 Personnaliser</h2><p style="color:var(--muted)">Choisissez la couleur principale.</p><div class="palette" id="palette"></div><label>Couleur personnalisée</label><input id="customColor" type="color" value="#6c5ce7" style="height:48px"><button class="btn primary" id="saveColor">Appliquer</button></div></div>
+<div id="callPanel" class="callPanel hidden"><div><b id="callTitle">Appel audio</b></div><div class="callAvatar" id="callAvatar">☎</div><div id="callState">Connexion…</div><div class="callTimer" id="callTimer">00:00</div><div class="callBtns"><button class="btn" id="muteCall">🎙</button><button class="btn" id="hangupCall">📵</button></div><audio id="remoteAudio" autoplay></audio></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+  import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+  import { getDatabase, ref as dbRef, set as dbSet, onValue, onDisconnect, push } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+  // IMPORTANT : remplacez uniquement les valeurs ci-dessous par la configuration
+  // fournie par Firebase Console > Paramètres du projet > Vos applications > Web.
+  const firebaseConfig = {
+     apiKey: "AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
+    authDomain: "messagerie-cd2ba.firebaseapp.com",
+    databaseURL: "https://messagerie-cd2ba-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "messagerie-cd2ba",
+    storageBucket: "messagerie-cd2ba.firebasestorage.app",
+    messagingSenderId: "846140280738",
+    appId: "1:846140280738:web:03a0fb23ca8fa0e59bacfb",
+    measurementId: "G-S8CC69WLD4"
+  };
+
+  const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app), storage = getStorage(app), rtdb = getDatabase(app);
+  let me=null, active=null, unsubChats=null, unsubMessages=null, recorder=null, chunks=[];
+  let peer=null, localStream=null, callId=null, callUnsubs=[], callTimerInterval=null, muted=false;
+
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+  const initials=s=>String(s||"?").split(/[ @]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+
+  // Thème local
+  const savedTheme=localStorage.getItem("messagerie-theme")||"dark"; document.documentElement.dataset.theme=savedTheme;
+  const savedAccent=localStorage.getItem("messagerie-accent")||"#6c5ce7"; document.documentElement.style.setProperty("--accent",savedAccent);
+  $("theme").onclick=()=>{let t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;localStorage.setItem("messagerie-theme",t)};
+  const colors=["#6c5ce7","#00a8ff","#00b894","#ff7675","#e84393","#fd9644","#0984e3","#6ab04c","#a55eea","#20bf6b"];
+  $("palette").innerHTML=colors.map(c=>`<button style="background:${c}" data-color="${c}" title="${c}"></button>`).join("");
+  document.querySelectorAll("#palette button").forEach(b=>b.onclick=()=>{$("customColor").value=b.dataset.color});
+  $("customize").onclick=()=>{$("customColor").value=getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();$("customModal").classList.remove("hidden")};
+  $("closeCustom").onclick=()=>$("customModal").classList.add("hidden");
+  $("saveColor").onclick=()=>{const c=$("customColor").value;document.documentElement.style.setProperty("--accent",c);localStorage.setItem("messagerie-accent",c);$("customModal").classList.add("hidden")};
+
+  $("authBtn").onclick=async()=>{
+    try{
+      $("authStatus").textContent="Connexion…";
+      try{await signInWithEmailAndPassword(auth,$("email").value,$("password").value)}
+      catch(e){if(["auth/user-not-found","auth/invalid-credential"].includes(e.code)) await createUserWithEmailAndPassword(auth,$("email").value,$("password").value); else throw e}
+    }catch(e){$("authStatus").textContent=e.message}
+  };
+  $("goAdmin").onclick=()=>window.location.href="admin.html";
+  $("logout").onclick=()=>signOut(auth);
+
+  onAuthStateChanged(auth,async user=>{
+    me=user;if(!user){$("login").classList.remove("hidden");return}
+    $("login").classList.add("hidden"); await ensureUser(user); listenChats();
+  });
+
+  async function ensureUser(u){
+    const r=doc(db,"users",u.uid), s=await getDoc(r);
+    if(!s.exists()) await setDoc(r,{uid:u.uid,email:u.email,displayName:u.email.split("@")[0],createdAt:serverTimestamp()});
+  }
+
+  function listenChats(){
+    if(unsubChats) unsubChats();
+    // Une conversation privée contient les deux UID. Les règles Firestore empêchent
+    // un tiers de la lire même s'il connaît son ID.
+    unsubChats=onSnapshot(query(collection(db,"conversations"),where("members","array-contains",me.uid)),snap=>{
+      const list=[];snap.forEach(d=>list.push({id:d.id,...d.data()}));list.sort((a,b)=>(b.updatedAt?.seconds||0)-(a.updatedAt?.seconds||0));renderChats(list);
+    },e=>console.error(e));
+  }
+
+  function renderChats(list){
+    const term=$("search").value.toLowerCase();
+    $("chats").innerHTML="";
+    list.filter(c=>(c.name||c.members?.join(" ")||"").toLowerCase().includes(term)).forEach(c=>{
+      const other=c.type==="group"?null:c.members.find(x=>x!==me.uid);
+      const label=c.type==="group"?(c.name||"Groupe"): (c.memberEmails?.find(x=>x!==me.email)||"Discussion privée");
+      const el=document.createElement("div");el.className="chat"+(active?.id===c.id?" active":"");
+      el.innerHTML=`<div class="avatar">${initials(label)}</div><div class="chatInfo"><b>${esc(label)}</b><small>${c.type==="group"?"Groupe":"Conversation privée"}</small></div>`;
+      el.onclick=()=>openChat(c);$("chats").appendChild(el);
+    });
+  }
+  $("search").oninput=()=>listenChats();
+
+  async function openChat(c){
+    active=c;$("headerName").textContent=c.type==="group"?c.name:(c.memberEmails?.find(x=>x!==me.email)||"Discussion privée");
+    $("headerAvatar").textContent=initials($("headerName").textContent);$("headerStatus").textContent=c.type==="group"?"Groupe sécurisé":"Conversation privée";
+    callUnsubs.forEach(u=>u&&u());callUnsubs=[];if(c.type==="private")watchIncoming();
+    if(unsubMessages)unsubMessages();
+    unsubMessages=onSnapshot(query(collection(db,"conversations",c.id,"messages"),orderBy("createdAt","asc")),snap=>{
+      $("messages").innerHTML="";
+      if(snap.empty){$("messages").innerHTML='<div class="empty">Aucun message. Dites bonjour 👋</div>';return}
+      snap.forEach(d=>renderMessage({id:d.id,...d.data()}));
+      $("messages").scrollTop=$("messages").scrollHeight;
+    });
+    renderChatsFromActive();
+  }
+  function renderChatsFromActive(){document.querySelectorAll(".chat").forEach(x=>x.classList.remove("active"));}
+
+  function renderMessage(m){
+    const row=document.createElement("div");row.className="msgRow "+(m.senderId===me.uid?"mine":"");
+    let body="";
+    if(m.kind==="image") body=`<img src="${m.url}" alt="image">`;
+    else if(m.kind==="audio") body=`<audio controls src="${m.url}"></audio>`;
+    else if(m.kind==="file") body=`<div class="file">📎 <a href="${m.url}" target="_blank" rel="noopener">${esc(m.fileName||"Fichier")}</a></div>`;
+    else body=esc(m.text||"").replace(/\n/g,"<br>");
+    row.innerHTML=`<div class="bubble">${body}<div class="meta">${m.senderId===me.uid?"Vous":esc(m.senderEmail||"")} · ${m.createdAt?.toDate?m.createdAt.toDate().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"…"}</div></div>`;
+    if(m.senderId===me.uid){row.title="Cliquer pour supprimer";row.onclick=()=>deleteMessage(m)}
+    $("messages").appendChild(row);
+  }
+
+  async function sendMessage(text,kind="text",extra={}){
+    if(!active||!text&&kind==="text")return;
+    await addDoc(collection(db,"conversations",active.id,"messages"),{text:text||"",kind,senderId:me.uid,senderEmail:me.email,createdAt:serverTimestamp(),...extra});
+    await updateDoc(doc(db,"conversations",active.id),{updatedAt:serverTimestamp(),lastMessage:kind==="text"?text:kind});
+  }
+  $("send").onclick=()=>{const t=$("messageInput").value.trim();if(t){sendMessage(t);$("messageInput").value=""}};
+  $("messageInput").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("send").click()}};
+
+  $("attach").onclick=()=>$("fileInput").click();
+  $("fileInput").onchange=async e=>{
+    const file=e.target.files[0];if(!file||!active)return;
+    try{
+      const path=`uploads/${me.uid}/${Date.now()}_${file.name.replace(/[^\w.\-]/g,"_")}`;
+      const storageRef=ref(storage,path);await uploadBytes(storageRef,file);const url=await getDownloadURL(storageRef);
+      const kind=file.type.startsWith("image/")?"image":file.type.startsWith("audio/")?"audio":"file";
+      await sendMessage("",kind,{url,fileName:file.name,storagePath:path,mimeType:file.type});
+    }catch(err){alert("Envoi impossible : "+err.message)} e.target.value="";
+  };
+
+  $("voice").onclick=async()=>{
+    if(recorder){recorder.stop();return}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});chunks=[];recorder=new MediaRecorder(stream);
+      $("voice").classList.add("recording");$("voice").textContent="■";
+      recorder.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+      recorder.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());$("voice").classList.remove("recording");$("voice").textContent="🎙";recorder=null;
+        const blob=new Blob(chunks,{type:"audio/webm"}), path=`voices/${me.uid}/${Date.now()}.webm`;
+        await uploadBytes(ref(storage,path),blob);const url=await getDownloadURL(ref(storage,path));await sendMessage("", "audio",{url,storagePath:path,fileName:"message-vocal.webm",mimeType:"audio/webm"});
+      };recorder.start();
+    }catch(e){alert("Le micro n'est pas disponible. Utilisez HTTPS ou localhost et autorisez le microphone.")}
+  };
+
+
+  function stopCall(){
+    callUnsubs.forEach(u=>u&&u()); callUnsubs=[];
+    if(peer){peer.close();peer=null}
+    if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}
+    if(callTimerInterval)clearInterval(callTimerInterval); callTimerInterval=null;
+    $("callPanel").classList.add("hidden"); $("remoteAudio").srcObject=null; callId=null;
+  }
+  async function startAudioCall(){
+    if(!active || active.type!=="private") return alert("Les appels audio sont disponibles uniquement en conversation privée.");
+    if(callId)return;
+    try{
+      localStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      peer=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+      localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));
+      peer.ontrack=e=>$("remoteAudio").srcObject=e.streams[0];
+      callId=push(dbRef(rtdb,`calls/${active.id}`)).key;
+      const base=`calls/${active.id}/${callId}`;
+      const callRef=dbRef(rtdb,base), offerC=dbRef(rtdb,`${base}/offerCandidates`), answerC=dbRef(rtdb,`${base}/answerCandidates`);
+      peer.onicecandidate=e=>e.candidate&&dbSet(push(offerC),e.candidate.toJSON());
+      const offer=await peer.createOffer();await peer.setLocalDescription(offer);
+      await dbSet(callRef,{callerId:me.uid,callerEmail:me.email,offer:{type:offer.type,sdp:offer.sdp},status:"ringing",createdAt:Date.now()});
+      onDisconnect(callRef).remove();
+      const u=onValue(callRef,async s=>{const d=s.val();if(!d)return;if(d.answer&&!peer.currentRemoteDescription)await peer.setRemoteDescription(new RTCSessionDescription(d.answer));if(d.status==="ended"||d.status==="declined")stopCall()});callUnsubs.push(u);
+      const u2=onValue(answerC,s=>s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));callUnsubs.push(u2);
+      $("callTitle").textContent="Appel vers "+$("headerName").textContent;$("callAvatar").textContent=initials($("headerName").textContent);$("callState").textContent="Appel en cours…";$("callPanel").classList.remove("hidden");
+      const started=Date.now();callTimerInterval=setInterval(()=>{$("callTimer").textContent=new Date(Date.now()-started).toISOString().slice(14,19)},1000);
+    }catch(e){stopCall();alert("Microphone indisponible : "+e.message)}
+  }
+  async function watchIncoming(){
+    if(!active||active.type!=="private")return;
+    const u=onValue(dbRef(rtdb,`calls/${active.id}`),snap=>{
+      const calls=snap.val()||{};
+      for(const [id,d] of Object.entries(calls)){
+        if(d.callerId!==me.uid&&d.status==="ringing"&&!callId){
+          if(confirm(`Appel audio entrant de ${d.callerEmail||"un utilisateur"}. Accepter ?`)) acceptAudioCall(id,d);
+          else dbSet(dbRef(rtdb,`calls/${active.id}/${id}/status`),"declined");
+        }
+      }
+    });callUnsubs.push(u);
+  }
+  async function acceptAudioCall(id,d){
+    try{
+      callId=id;localStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      peer=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+      localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));peer.ontrack=e=>$("remoteAudio").srcObject=e.streams[0];
+      const base=`calls/${active.id}/${id}`, callRef=dbRef(rtdb,base), offerC=dbRef(rtdb,`${base}/offerCandidates`), answerC=dbRef(rtdb,`${base}/answerCandidates`);
+      onValue(offerC,s=>s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));
+      peer.onicecandidate=e=>e.candidate&&dbSet(push(answerC),e.candidate.toJSON());
+      await peer.setRemoteDescription(new RTCSessionDescription(d.offer));
+      const answer=await peer.createAnswer();await peer.setLocalDescription(answer);
+      await dbSet(dbRef(rtdb,`${base}/answer`),{type:answer.type,sdp:answer.sdp});await dbSet(dbRef(rtdb,`${base}/status`),"active");
+      $("callTitle").textContent="Appel avec "+d.callerEmail;$("callAvatar").textContent=initials(d.callerEmail);$("callState").textContent="En communication";$("callPanel").classList.remove("hidden");
+      const started=Date.now();callTimerInterval=setInterval(()=>{$("callTimer").textContent=new Date(Date.now()-started).toISOString().slice(14,19)},1000);
+    }catch(e){stopCall();alert("Impossible d’accepter l’appel : "+e.message)}
+  }
+  $("audioCall").onclick=startAudioCall;
+  $("hangupCall").onclick=async()=>{if(active&&callId)await dbSet(dbRef(rtdb,`calls/${active.id}/${callId}/status`),"ended");stopCall()};
+  $("muteCall").onclick=()=>{muted=!muted;localStream?.getAudioTracks().forEach(t=>t.enabled=!muted);$("muteCall").textContent=muted?"🔇":"🎙"};
+
+  async function deleteMessage(m){
+    if(m.senderId!==me.uid)return;
+    if(!confirm("Supprimer ce message ?"))return;
+    await deleteDoc(doc(db,"conversations",active.id,"messages",m.id));
+    if(m.storagePath){try{await deleteObject(ref(storage,m.storagePath))}catch{}}
+  }
+
+  function modal(title,help,placeholder,callback){
+    $("modalTitle").textContent=title;$("modalHelp").textContent=help;$("modalInput").placeholder=placeholder;$("modalInput").value="";
+    $("modal").classList.remove("hidden");$("modalOk").onclick=async()=>{const v=$("modalInput").value.trim();if(v){await callback(v);$("modal").classList.add("hidden")}};
+  }
+  $("closeModal").onclick=()=>$("modal").classList.add("hidden");
+
+  $("newChat").onclick=()=>modal("Nouvelle discussion","Entrez l’email exact de la personne.","email@exemple.com",async email=>{
+    if(email===me.email)return alert("Utilisez l’email d’une autre personne.");
+    const users=await getDocs(query(collection(db,"users"),where("email","==",email)));
+    if(users.empty)return alert("Utilisateur introuvable. Il doit d’abord créer son compte.");
+    const other=users.docs[0].data();const members=[me.uid,other.uid].sort();const id=members.join("_");
+    await setDoc(doc(db,"conversations",id),{type:"private",members,memberEmails:[me.email,other.email],createdAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+  });
+
+  $("newGroup").onclick=()=>modal("Créer un groupe","Entrez un nom. Ajoutez ensuite les membres via votre logique d’administration.","Nom du groupe",async name=>{
+    const d=await addDoc(collection(db,"conversations"),{type:"group",name,members:[me.uid],memberEmails:[me.email],ownerId:me.uid,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    alert("Groupe créé. Pour ajouter des membres, ajoutez une interface d'administration utilisant leurs UID.");
+  });
+
+  $("deleteConversation").onclick=async()=>{
+    if(!active)return;if(!confirm("Supprimer cette conversation pour vous ?"))return;
+    // La suppression complète doit idéalement être faite par Cloud Function/transaction.
+    if(active.type==="group" && active.ownerId!==me.uid)return alert("Seul le créateur peut supprimer le groupe.");
+    await deleteDoc(doc(db,"conversations",active.id));active=null;$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
+  };
+  $("mobileMenu").onclick=()=>$("sidebar").classList.toggle("mobile");
+</script>
+</body>
+</html>
