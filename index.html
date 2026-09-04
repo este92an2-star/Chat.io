@@ -52,10 +52,12 @@
   <div class="card">
     <h1>✦ Messagerie</h1>
     <p style="color:var(--muted)">Messagerie futuriste, privée et basée sur Firebase.</p>
-    <label>Email</label><input id="email" type="email" placeholder="vous@exemple.com">
+    <label>Nom</label><input id="lastName" type="text" placeholder="Dupont">
+    <label>Prénom</label><input id="firstName" type="text" placeholder="Jean">
     <label>Mot de passe</label><input id="password" type="password" placeholder="••••••••">
-    <button id="authBtn" class="btn primary">Se connecter / créer un compte</button>
-    <p id="authStatus" style="color:var(--muted);font-size:13px"></p>
+    <button id="authBtn" class="btn primary">Se connecter</button>
+    <button id="createUserBtn" class="btn" style="margin-top:10px; background:var(--panel2);">Créer un compte</button>
+    <p id="authStatus" style="color:var(--muted);font-size:13px">Compte créé dans la base Firebase Realtime Database.</p>
   </div>
 </div>
 
@@ -74,7 +76,7 @@
     <header class="header">
       <button class="btn round" id="mobileMenu">☰</button>
       <div id="headerAvatar" class="avatar">?</div><div class="headerInfo"><b id="headerName">Sélectionnez une conversation</b><small id="headerStatus">—</small></div>
-      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="deleteConversation">🗑</button></div>
+      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="addGroupMember" title="Ajouter un membre">＋</button><button class="btn" id="deleteConversation">🗑</button></div>
     </header>
     <section id="messages"><div class="empty">Choisissez une conversation ou créez-en une.</div></section>
     <footer class="composer">
@@ -93,15 +95,11 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-  import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, updateDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
   import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
-  import { getDatabase, ref as dbRef, set as dbSet, onValue, onDisconnect, push } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+  import { getDatabase, ref as dbRef, set as dbSet, get as dbGet, onValue, onDisconnect, push, remove as dbRemove, update as dbUpdate } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
-  // IMPORTANT : remplacez uniquement les valeurs ci-dessous par la configuration
-  // fournie par Firebase Console > Paramètres du projet > Vos applications > Web.
   const firebaseConfig = {
-     apiKey: "AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
+    apiKey: "AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
     authDomain: "messagerie-cd2ba.firebaseapp.com",
     databaseURL: "https://messagerie-cd2ba-default-rtdb.europe-west1.firebasedatabase.app",
     projectId: "messagerie-cd2ba",
@@ -111,15 +109,116 @@
     measurementId: "G-S8CC69WLD4"
   };
 
-  const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app), storage = getStorage(app), rtdb = getDatabase(app);
+  const app = initializeApp(firebaseConfig), storage = getStorage(app), rtdb = getDatabase(app);
   let me=null, active=null, unsubChats=null, unsubMessages=null, recorder=null, chunks=[];
   let peer=null, localStream=null, callId=null, callUnsubs=[], callTimerInterval=null, muted=false;
+
+  function encodeEmail(email) {
+    return String(email || "").trim().toLowerCase().replace(/\./g, ',');
+  }
+
+  function decodeEmail(encodedEmail) {
+    return String(encodedEmail || "").replace(/,/g, '.');
+  }
+
+  function sauvegarderProfil(email, nom) {
+    const encodedKey = encodeEmail(email);
+    return dbSet(dbRef(rtdb, 'users/' + encodedKey), {
+      nom: nom,
+      email: email
+    });
+  }
 
   const $=id=>document.getElementById(id);
   const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
   const initials=s=>String(s||"?").split(/[ @]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+  const normalizeName=(value)=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+  const buildUserKey=(first,last)=>{
+    const a=normalizeName(first).replace(/\s+/g,"_");
+    const b=normalizeName(last).replace(/\s+/g,"_");
+    return [a,b].filter(Boolean).join("_").replace(/_+/g,"_").replace(/^_|_$/g,"");
+  };
 
-  // Thème local
+  function legacyUserKey(first,last){
+    const a=normalizeName(first).replace(/\s+/g,"_");
+    const b=normalizeName(last).replace(/\s+/g,"_");
+    return `${a}.${b}`.replace(/\./g,"_");
+  }
+
+  async function findUserByName(name){
+    const fullName=String(name||"").trim();
+    if(!fullName) return null;
+    const snap=await dbGet(dbRef(rtdb,"users"));
+    const users=snap.val()||{};
+    const target=normalizeName(fullName);
+    return Object.values(users).find(u => normalizeName(`${u.firstName||""} ${u.lastName||""}`)===target || normalizeName(u.displayName||"")===target) || null;
+  }
+
+  async function resolveUserKey(firstName,lastName){
+    const primary=buildUserKey(firstName,lastName);
+    const legacy=legacyUserKey(firstName,lastName);
+    const candidates=[primary,legacy];
+    for(const key of candidates){
+      const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+      if(snap.exists()) return { key, user: snap.val() };
+    }
+    return null;
+  }
+
+  async function createUserAccount(){
+    const firstName=($("firstName")?.value||"").trim();
+    const lastName=($("lastName")?.value||"").trim();
+    const password=($("password")?.value||"").trim();
+    if(!firstName || !lastName){throw new Error("Renseignez votre nom et votre prénom.");}
+    if(!password){throw new Error("Renseignez un mot de passe.");}
+    const key=buildUserKey(firstName,lastName);
+    const userRef=dbRef(rtdb,`users/${key}`);
+    const snap=await dbGet(userRef);
+    if(snap.exists()){
+      throw new Error("Ce compte existe déjà.");
+    }
+    const payload={
+      uid:key,
+      firstName,
+      lastName,
+      displayName:`${firstName} ${lastName}`,
+      password,
+      createdAt:Date.now(),
+      conversations:{},
+      groups:{}
+    };
+    await dbSet(userRef,payload);
+    return key;
+  }
+
+  async function loginOrCreateUser(){
+    const firstName=($("firstName")?.value||"").trim();
+    const lastName=($("lastName")?.value||"").trim();
+    const password=($("password")?.value||"").trim();
+    if(!firstName || !lastName){throw new Error("Renseignez votre nom et votre prénom.");}
+    if(!password){throw new Error("Renseignez un mot de passe.");}
+    const result=await resolveUserKey(firstName,lastName);
+    if(!result){
+      throw new Error("Compte introuvable. Créez-le depuis le bouton Créer un compte.");
+    }
+    const {key,user}=result;
+    if((user.password||"")!==password){throw new Error("Mot de passe incorrect.");}
+    me={uid:key,...user,displayName:user.displayName||`${user.firstName} ${user.lastName}`};
+    sessionStorage.setItem("messagerieUserKey",key);
+    $("login").classList.add("hidden");
+    await listenChats();
+  }
+
+  async function hydrateSession(){
+    const key=sessionStorage.getItem("messagerieUserKey");
+    if(!key){ $("login").classList.remove("hidden"); return; }
+    const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+    if(!snap.exists()){ sessionStorage.removeItem("messagerieUserKey"); $("login").classList.remove("hidden"); return; }
+    me={uid:key,...snap.val()};
+    $("login").classList.add("hidden");
+    await listenChats();
+  }
+
   const savedTheme=localStorage.getItem("messagerie-theme")||"dark"; document.documentElement.dataset.theme=savedTheme;
   const savedAccent=localStorage.getItem("messagerie-accent")||"#6c5ce7"; document.documentElement.style.setProperty("--accent",savedAccent);
   $("theme").onclick=()=>{let t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;localStorage.setItem("messagerie-theme",t)};
@@ -133,29 +232,37 @@
   $("authBtn").onclick=async()=>{
     try{
       $("authStatus").textContent="Connexion…";
-      try{await signInWithEmailAndPassword(auth,$("email").value,$("password").value)}
-      catch(e){if(["auth/user-not-found","auth/invalid-credential"].includes(e.code)) await createUserWithEmailAndPassword(auth,$("email").value,$("password").value); else throw e}
+      await loginOrCreateUser();
+      $("authStatus").textContent="Connexion réussie";
     }catch(e){$("authStatus").textContent=e.message}
   };
+
+  $("createUserBtn").onclick=async()=>{
+    try{
+      $("authStatus").textContent="Création du compte…";
+      const key=await createUserAccount();
+      $("authStatus").textContent=`Compte créé : ${key}. Vous pouvez maintenant vous connecter.`;
+    }catch(e){$("authStatus").textContent=e.message}
+  };
+
   $("goAdmin").onclick=()=>window.location.href="admin.html";
-  $("logout").onclick=()=>signOut(auth);
-
-  onAuthStateChanged(auth,async user=>{
-    me=user;if(!user){$("login").classList.remove("hidden");return}
-    $("login").classList.add("hidden"); await ensureUser(user); listenChats();
-  });
-
-  async function ensureUser(u){
-    const r=doc(db,"users",u.uid), s=await getDoc(r);
-    if(!s.exists()) await setDoc(r,{uid:u.uid,email:u.email,displayName:u.email.split("@")[0],createdAt:serverTimestamp()});
-  }
+  $("logout").onclick=async()=>{
+    sessionStorage.removeItem("messagerieUserKey");
+    me=null; active=null;
+    if(unsubChats) unsubChats();
+    if(unsubMessages) unsubMessages();
+    $("login").classList.remove("hidden");
+    $("messages").innerHTML='<div class="empty">Déconnecté.</div>';
+  };
 
   function listenChats(){
     if(unsubChats) unsubChats();
-    // Une conversation privée contient les deux UID. Les règles Firestore empêchent
-    // un tiers de la lire même s'il connaît son ID.
-    unsubChats=onSnapshot(query(collection(db,"conversations"),where("members","array-contains",me.uid)),snap=>{
-      const list=[];snap.forEach(d=>list.push({id:d.id,...d.data()}));list.sort((a,b)=>(b.updatedAt?.seconds||0)-(a.updatedAt?.seconds||0));renderChats(list);
+    if(!me) return;
+    const ref=dbRef(rtdb,`users/${me.uid}/conversations`);
+    unsubChats=onValue(ref,snap=>{
+      const list=[]; const entries=snap.val()||{}; Object.values(entries).forEach(item=>item&&list.push(item));
+      list.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
+      renderChats(list);
     },e=>console.error(e));
   }
 
@@ -163,8 +270,7 @@
     const term=$("search").value.toLowerCase();
     $("chats").innerHTML="";
     list.filter(c=>(c.name||c.members?.join(" ")||"").toLowerCase().includes(term)).forEach(c=>{
-      const other=c.type==="group"?null:c.members.find(x=>x!==me.uid);
-      const label=c.type==="group"?(c.name||"Groupe"): (c.memberEmails?.find(x=>x!==me.email)||"Discussion privée");
+      const label=c.type==="group"?(c.name||"Groupe"): (c.name||"Conversation privée");
       const el=document.createElement("div");el.className="chat"+(active?.id===c.id?" active":"");
       el.innerHTML=`<div class="avatar">${initials(label)}</div><div class="chatInfo"><b>${esc(label)}</b><small>${c.type==="group"?"Groupe":"Conversation privée"}</small></div>`;
       el.onclick=()=>openChat(c);$("chats").appendChild(el);
@@ -173,19 +279,20 @@
   $("search").oninput=()=>listenChats();
 
   async function openChat(c){
-    active=c;$("headerName").textContent=c.type==="group"?c.name:(c.memberEmails?.find(x=>x!==me.email)||"Discussion privée");
+    active=c;$("headerName").textContent=c.type==="group"?c.name:(c.name||"Conversation privée");
     $("headerAvatar").textContent=initials($("headerName").textContent);$("headerStatus").textContent=c.type==="group"?"Groupe sécurisé":"Conversation privée";
-    callUnsubs.forEach(u=>u&&u());callUnsubs=[];if(c.type==="private")watchIncoming();
     if(unsubMessages)unsubMessages();
-    unsubMessages=onSnapshot(query(collection(db,"conversations",c.id,"messages"),orderBy("createdAt","asc")),snap=>{
+    const messagesRef=dbRef(rtdb,`conversations/${c.id}/messages`);
+    unsubMessages=onValue(messagesRef,snap=>{
+      const items=[]; const data=snap.val()||{}; Object.entries(data).forEach(([id,val])=>items.push({id,...val}));
+      items.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
       $("messages").innerHTML="";
-      if(snap.empty){$("messages").innerHTML='<div class="empty">Aucun message. Dites bonjour 👋</div>';return}
-      snap.forEach(d=>renderMessage({id:d.id,...d.data()}));
+      if(!items.length){$("messages").innerHTML='<div class="empty">Aucun message. Dites bonjour 👋</div>';return}
+      items.forEach(renderMessage);
       $("messages").scrollTop=$("messages").scrollHeight;
     });
-    renderChatsFromActive();
+    document.querySelectorAll(".chat").forEach(x=>x.classList.remove("active"));
   }
-  function renderChatsFromActive(){document.querySelectorAll(".chat").forEach(x=>x.classList.remove("active"));}
 
   function renderMessage(m){
     const row=document.createElement("div");row.className="msgRow "+(m.senderId===me.uid?"mine":"");
@@ -194,15 +301,18 @@
     else if(m.kind==="audio") body=`<audio controls src="${m.url}"></audio>`;
     else if(m.kind==="file") body=`<div class="file">📎 <a href="${m.url}" target="_blank" rel="noopener">${esc(m.fileName||"Fichier")}</a></div>`;
     else body=esc(m.text||"").replace(/\n/g,"<br>");
-    row.innerHTML=`<div class="bubble">${body}<div class="meta">${m.senderId===me.uid?"Vous":esc(m.senderEmail||"")} · ${m.createdAt?.toDate?m.createdAt.toDate().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"…"}</div></div>`;
+    const time = m.createdAt && typeof m.createdAt === "number" ? new Date(m.createdAt).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "…";
+    row.innerHTML=`<div class="bubble">${body}<div class="meta">${m.senderId===me.uid?"Vous":esc(m.senderEmail||"")} · ${time}</div></div>`;
     if(m.senderId===me.uid){row.title="Cliquer pour supprimer";row.onclick=()=>deleteMessage(m)}
     $("messages").appendChild(row);
   }
 
   async function sendMessage(text,kind="text",extra={}){
-    if(!active||!text&&kind==="text")return;
-    await addDoc(collection(db,"conversations",active.id,"messages"),{text:text||"",kind,senderId:me.uid,senderEmail:me.email,createdAt:serverTimestamp(),...extra});
-    await updateDoc(doc(db,"conversations",active.id),{updatedAt:serverTimestamp(),lastMessage:kind==="text"?text:kind});
+    if(!active||(!text&&kind==="text"))return;
+    const message={text:text||"",kind,senderId:me.uid,senderEmail:me.displayName||`${me.firstName} ${me.lastName}`,createdAt:Date.now(),...extra};
+    const key=push(dbRef(rtdb,`conversations/${active.id}/messages`)).key;
+    await dbSet(dbRef(rtdb,`conversations/${active.id}/messages/${key}`),message);
+    await dbSet(dbRef(rtdb,`conversations/${active.id}`),{...((await dbGet(dbRef(rtdb,`conversations/${active.id}`))).val()||{}),updatedAt:Date.now(),lastMessage:kind==="text"?text:kind});
   }
   $("send").onclick=()=>{const t=$("messageInput").value.trim();if(t){sendMessage(t);$("messageInput").value=""}};
   $("messageInput").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("send").click()}};
@@ -232,7 +342,6 @@
     }catch(e){alert("Le micro n'est pas disponible. Utilisez HTTPS ou localhost et autorisez le microphone.")}
   };
 
-
   function stopCall(){
     callUnsubs.forEach(u=>u&&u()); callUnsubs=[];
     if(peer){peer.close();peer=null}
@@ -253,7 +362,7 @@
       const callRef=dbRef(rtdb,base), offerC=dbRef(rtdb,`${base}/offerCandidates`), answerC=dbRef(rtdb,`${base}/answerCandidates`);
       peer.onicecandidate=e=>e.candidate&&dbSet(push(offerC),e.candidate.toJSON());
       const offer=await peer.createOffer();await peer.setLocalDescription(offer);
-      await dbSet(callRef,{callerId:me.uid,callerEmail:me.email,offer:{type:offer.type,sdp:offer.sdp},status:"ringing",createdAt:Date.now()});
+      await dbSet(callRef,{callerId:me.uid,callerEmail:me.displayName||`${me.firstName} ${me.lastName}`,offer:{type:offer.type,sdp:offer.sdp},status:"ringing",createdAt:Date.now()});
       onDisconnect(callRef).remove();
       const u=onValue(callRef,async s=>{const d=s.val();if(!d)return;if(d.answer&&!peer.currentRemoteDescription)await peer.setRemoteDescription(new RTCSessionDescription(d.answer));if(d.status==="ended"||d.status==="declined")stopCall()});callUnsubs.push(u);
       const u2=onValue(answerC,s=>s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));callUnsubs.push(u2);
@@ -295,7 +404,7 @@
   async function deleteMessage(m){
     if(m.senderId!==me.uid)return;
     if(!confirm("Supprimer ce message ?"))return;
-    await deleteDoc(doc(db,"conversations",active.id,"messages",m.id));
+    await dbRemove(dbRef(rtdb,`conversations/${active.id}/messages/${m.id}`));
     if(m.storagePath){try{await deleteObject(ref(storage,m.storagePath))}catch{}}
   }
 
@@ -305,26 +414,71 @@
   }
   $("closeModal").onclick=()=>$("modal").classList.add("hidden");
 
-  $("newChat").onclick=()=>modal("Nouvelle discussion","Entrez l’email exact de la personne.","email@exemple.com",async email=>{
-    if(email===me.email)return alert("Utilisez l’email d’une autre personne.");
-    const users=await getDocs(query(collection(db,"users"),where("email","==",email)));
-    if(users.empty)return alert("Utilisateur introuvable. Il doit d’abord créer son compte.");
-    const other=users.docs[0].data();const members=[me.uid,other.uid].sort();const id=members.join("_");
-    await setDoc(doc(db,"conversations",id),{type:"private",members,memberEmails:[me.email,other.email],createdAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+  $("newChat").onclick=()=>modal("Nouvelle discussion","Entrez le nom complet de la personne.","Nom Prénom",async name=>{
+    const other=await findUserByName(name);
+    if(!other){return alert("Utilisateur introuvable.");}
+    if(other.uid===me.uid){return alert("Vous ne pouvez pas créer une conversation avec vous-même.");}
+    const members=[me.uid,other.uid].sort();
+    const id=members.join("_");
+    const memberNames=[me.displayName||`${me.firstName} ${me.lastName}`,`${other.firstName} ${other.lastName}`];
+    const conv={id,type:"private",name:`${other.firstName} ${other.lastName}`,members,memberNames,createdAt:Date.now(),updatedAt:Date.now()};
+    await dbSet(dbRef(rtdb,`conversations/${id}`),{...conv, messages:{} });
+    await dbSet(dbRef(rtdb,`users/${me.uid}/conversations/${id}`),{...conv,name:`${other.firstName} ${other.lastName}`});
+    await dbSet(dbRef(rtdb,`users/${other.uid}/conversations/${id}`),{...conv,name:`${me.firstName} ${me.lastName}`});
   });
 
-  $("newGroup").onclick=()=>modal("Créer un groupe","Entrez un nom. Ajoutez ensuite les membres via votre logique d’administration.","Nom du groupe",async name=>{
-    const d=await addDoc(collection(db,"conversations"),{type:"group",name,members:[me.uid],memberEmails:[me.email],ownerId:me.uid,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-    alert("Groupe créé. Pour ajouter des membres, ajoutez une interface d'administration utilisant leurs UID.");
+  $("newGroup").onclick=()=>modal("Créer un groupe","Entrez le nom du groupe.","Nom du groupe",async name=>{
+    const list=prompt("Ajouter des membres (séparés par des virgules, ex: Jean Dupont, Claire Martin)","");
+    const names=(list||"").split(",").map(x=>x.trim()).filter(Boolean);
+    const members=[me.uid];
+    const memberNames=[me.displayName||`${me.firstName} ${me.lastName}`];
+    for(const entry of names){
+      const user=await findUserByName(entry);
+      if(user && !members.includes(user.uid)){ members.push(user.uid); memberNames.push(`${user.firstName} ${user.lastName}`); }
+    }
+    const id=`group_${Date.now()}`;
+    const group={id,type:"group",name,members,memberNames,ownerId:me.uid,createdAt:Date.now(),updatedAt:Date.now(),messages:{}};
+    await dbSet(dbRef(rtdb,`conversations/${id}`),group);
+    await dbSet(dbRef(rtdb,`groups/${id}`),group);
+    for(const uid of members){
+      await dbSet(dbRef(rtdb,`users/${uid}/groups/${id}`),{id,type:"group",name});
+      await dbSet(dbRef(rtdb,`users/${uid}/conversations/${id}`),{...group, id, name});
+    }
+    alert("Groupe créé.");
   });
 
   $("deleteConversation").onclick=async()=>{
     if(!active)return;if(!confirm("Supprimer cette conversation pour vous ?"))return;
-    // La suppression complète doit idéalement être faite par Cloud Function/transaction.
     if(active.type==="group" && active.ownerId!==me.uid)return alert("Seul le créateur peut supprimer le groupe.");
-    await deleteDoc(doc(db,"conversations",active.id));active=null;$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
+    await dbRemove(dbRef(rtdb,`conversations/${active.id}`));
+    await dbRemove(dbRef(rtdb,`users/${me.uid}/conversations/${active.id}`));
+    if(active.type==="group"){
+      for(const uid of active.members||[]){ if(uid!==me.uid){ await dbRemove(dbRef(rtdb,`users/${uid}/conversations/${active.id}`)); } }
+    }
+    active=null;$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
   };
+
   $("mobileMenu").onclick=()=>$("sidebar").classList.toggle("mobile");
+  document.getElementById("addGroupMember")?.addEventListener("click",async()=>{
+    if(!active || active.type!=="group"){return alert("Sélectionnez un groupe.");}
+    const name=prompt("Nom complet de la personne à ajouter au groupe :","");
+    if(!name) return;
+    const user=await findUserByName(name);
+    if(!user){return alert("Utilisateur introuvable.");}
+    const snap=await dbGet(dbRef(rtdb,`groups/${active.id}`)); const current=snap.val()||{};
+    const members=[...(current.members||[])];
+    if(members.includes(user.uid)){return alert("Cette personne est déjà membre du groupe.");}
+    members.push(user.uid);
+    const memberNames=[...(current.memberNames||[]),`${user.firstName} ${user.lastName}`];
+    const updated={...current,members,memberNames,updatedAt:Date.now()};
+    await dbSet(dbRef(rtdb,`groups/${active.id}`),updated);
+    await dbSet(dbRef(rtdb,`conversations/${active.id}`),{...(await dbGet(dbRef(rtdb,`conversations/${active.id}`))).val()||{}, ...updated});
+    await dbSet(dbRef(rtdb,`users/${user.uid}/groups/${active.id}`),{id:active.id,type:"group",name:current.name});
+    await dbSet(dbRef(rtdb,`users/${user.uid}/conversations/${active.id}`),{...updated,id:active.id,name:current.name});
+    alert("Membre ajouté au groupe.");
+  });
+
+  hydrateSession();
 </script>
 </body>
 </html>
