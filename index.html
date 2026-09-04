@@ -45,7 +45,32 @@
     .login{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}.card{width:min(430px,92vw);background:var(--panel);border:1px solid var(--line);padding:28px;border-radius:24px;box-shadow:var(--shadow)}
     .card h1{margin-top:0}.card input{width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:7px 0 12px}.card button{width:100%;padding:12px}
     .hidden{display:none!important}.modal{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:20}.modal .card{position:relative}.close{position:absolute;right:16px;top:14px}
-    @media(max-width:800px){.app{grid-template-columns:1fr}.sidebar{display:none}.sidebar.mobile{display:flex;position:fixed;inset:0;z-index:5;width:85%}.main{height:100vh}.msgRow{max-width:88%}.header{padding:12px 14px}.headerActions{justify-content:flex-end}.composer{padding:10px 12px;gap:6px}.composer input{padding:10px 12px}.callPanel{right:10px;bottom:80px;width:calc(100vw - 20px)}}
+    @media(max-width:800px){
+      body{overflow:hidden}
+      .app{grid-template-columns:1fr;max-width:none;height:100vh}
+      .sidebar{position:fixed;left:0;top:0;bottom:0;width:82%;transform:translateX(-110%);transition:.25s ease;z-index:50;border-right:1px solid var(--line);box-shadow:var(--shadow)}
+      .sidebar.mobile{display:flex;transform:translateX(0)}
+      .main{height:100vh;width:100vw}
+      .header{padding:10px 12px;gap:8px;align-items:center}
+      .headerInfo{min-width:0}
+      .headerInfo b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .headerActions{gap:6px;justify-content:flex-end;flex-wrap:nowrap}
+      .headerActions .btn{padding:8px 10px;min-width:40px}
+      .composer{padding:8px 10px;gap:6px;position:sticky;bottom:0;z-index:10}
+      .composer input{padding:10px 12px;font-size:15px}
+      .composer .btn{min-width:42px;width:42px;height:42px;border-radius:50%}
+      .round{width:42px;height:42px}
+      .msgRow{max-width:92%}
+      .bubble{padding:9px 11px}
+      .bubble img{max-width:210px}
+      .callPanel{right:10px;bottom:80px;width:calc(100vw - 20px)}
+      .toolbar{padding:12px 10px;gap:8px}
+      .toolbar .btn{flex:1}
+      .search{margin:0 10px 10px}
+      #messages{padding:16px 12px 20px}
+      .brand{padding:16px 14px}
+      .chat{padding:12px 10px}
+    }
   </style>
 </head>
 <body>
@@ -588,6 +613,10 @@
   };
 
   $("mobileMenu").onclick=()=>$("sidebar").classList.toggle("mobile");
+  $("sidebar").addEventListener("click", e => {
+    const chat = e.target.closest(".chat");
+    if(chat && window.innerWidth <= 800){ $("sidebar").classList.remove("mobile"); }
+  });
   document.getElementById("addGroupMember")?.addEventListener("click",async()=>{
     if(!active || active.type!=="group"){return alert("Sélectionnez un groupe.");}
     const name=prompt("Nom complet de la personne à ajouter au groupe :","");
