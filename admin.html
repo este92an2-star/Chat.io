@@ -19,8 +19,9 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
 <div id="gate" class="login">
   <div class="card">
     <div class="top"><div class="logo">⚙</div><div><h1>Administration</h1><small>Accès protégé</small></div></div>
-    <p style="color:var(--muted)">Connectez-vous avec votre compte puis entrez le code administrateur.</p>
-    <input id="email" type="email" placeholder="Email">
+    <p style="color:var(--muted)">Connectez-vous avec un compte déjà créé dans la console Firebase puis entrez le code administrateur.</p>
+    <input id="lastName" type="text" placeholder="Nom">
+    <input id="firstName" type="text" placeholder="Prénom">
     <input id="password" type="password" placeholder="Mot de passe">
     <input id="adminCode" type="password" inputmode="numeric" maxlength="4" placeholder="Code administrateur">
     <button class="btn primary" id="loginAdmin" style="width:100%">Entrer</button>
@@ -55,8 +56,7 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import {getFirestore,collection,getDocs,deleteDoc,doc} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import {getDatabase,ref as dbRef,get as dbGet,remove as dbRemove} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
@@ -68,44 +68,71 @@ const firebaseConfig = {
   appId:"1:846140280738:web:03a0fb23ca8fa0e59bacfb",
   measurementId:"G-S8CC69WLD4"
 };
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const app=initializeApp(firebaseConfig),rtdb=getDatabase(app);
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const initials=s=>String(s||"?").split(/[ @]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+const normalizeName=(value)=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+const buildUserKey=(first,last)=>{
+  const a=normalizeName(first).replace(/\s+/g,"_");
+  const b=normalizeName(last).replace(/\s+/g,"_");
+  return [a,b].filter(Boolean).join("_").replace(/_+/g,"_").replace(/^_|_$/g,"");
+};
+
+async function resolveUserKey(firstName,lastName){
+  const primary=buildUserKey(firstName,lastName);
+  const legacy=primary.replace(/_/g,".");
+  for(const key of [primary, legacy]){
+    const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+    if(snap.exists()) return { key, user: snap.val() };
+  }
+  return null;
+}
+
+async function loadAdminSession(){
+  const key=sessionStorage.getItem("adminSessionKey");
+  if(!key){ $("gate").classList.remove("hidden"); $("admin").classList.add("hidden"); return; }
+  const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+  if(!snap.exists()){ sessionStorage.removeItem("adminSessionKey"); $("gate").classList.remove("hidden"); $("admin").classList.add("hidden"); return; }
+  const user=snap.val();
+  $("gate").classList.add("hidden"); $("admin").classList.remove("hidden"); $("adminEmail").textContent=`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid;
+  await loadDashboard();
+}
 
 $("loginAdmin").onclick=async()=>{
   try{
-    $("status").textContent="Connexion…";
-    if($("adminCode").value!=="0723") throw new Error("Code administrateur incorrect.");
-    await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);
+    const firstName=($("firstName")?.value||"").trim();
+    const lastName=($("lastName")?.value||"").trim();
+    const password=($("password")?.value||"").trim();
+    const adminCode=($("adminCode")?.value||"").trim();
+    if(!firstName || !lastName) throw new Error("Renseignez votre nom et votre prénom.");
+    if(!password) throw new Error("Renseignez un mot de passe.");
+    if(adminCode!=="0723") throw new Error("Code administrateur incorrect.");
+    const result=await resolveUserKey(firstName,lastName);
+    if(!result) throw new Error("Compte introuvable dans la base temps réel.");
+    const {key,user}=result;
+    if((user.password||"")!==password) throw new Error("Mot de passe incorrect.");
+    sessionStorage.setItem("adminSessionKey",key);
+    $("status").textContent="Accès autorisé";
+    $("gate").classList.add("hidden"); $("admin").classList.remove("hidden"); $("adminEmail").textContent=`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid;
+    await loadDashboard();
   }catch(e){$("status").textContent=e.message}
 };
+
 $("back").onclick=()=>location.href="index.html";
-$("logout").onclick=()=>signOut(auth);
+$("logout").onclick=()=>{sessionStorage.removeItem("adminSessionKey"); $("gate").classList.remove("hidden"); $("admin").classList.add("hidden");};
 $("refresh").onclick=loadDashboard;
 
-onAuthStateChanged(auth,async user=>{
-  if(!user){$("gate").classList.remove("hidden");$("admin").classList.add("hidden");return}
-  // Le code doit être saisi à chaque entrée dans la page.
-  if(sessionStorage.getItem("adminUnlocked")!=="1"){
-    $("gate").classList.remove("hidden");$("admin").classList.add("hidden");return;
-  }
-  showAdmin(user);
-});
-
-$("loginAdmin").addEventListener("click",()=>{
-  if($("adminCode").value==="0723") sessionStorage.setItem("adminUnlocked","1");
-});
-
-async function showAdmin(user){
-  $("gate").classList.add("hidden");$("admin").classList.remove("hidden");$("adminEmail").textContent=user.email||user.uid;
-  await loadDashboard();
-}
 async function loadDashboard(){
   try{
-    const [uSnap,cSnap]=await Promise.all([getDocs(collection(db,"users")),getDocs(collection(db,"conversations"))]);
-    const users=[];uSnap.forEach(d=>users.push({id:d.id,...d.data()}));
-    const conversations=[];cSnap.forEach(d=>conversations.push({id:d.id,...d.data()}));
+    const [uSnap,cSnap,gSnap]=await Promise.all([
+      dbGet(dbRef(rtdb,"users")),
+      dbGet(dbRef(rtdb,"conversations")),
+      dbGet(dbRef(rtdb,"groups"))
+    ]);
+    const users=[]; const usersObj=uSnap.val()||{}; Object.values(usersObj).forEach(u=>u&&users.push({id:u.uid||u.id,...u}));
+    const conversations=[]; const convObj=cSnap.val()||{}; Object.values(convObj).forEach(c=>c&&conversations.push({id:c.id||c.uid||c.name,...c}));
+    const groupsObj=gSnap.val()||{}; Object.values(groupsObj).forEach(g=>g&&conversations.push({id:g.id,...g}));
     $("userCount").textContent=users.length;
     $("conversationCount").textContent=conversations.length;
     $("groupCount").textContent=conversations.filter(c=>c.type==="group").length;
@@ -113,19 +140,20 @@ async function loadDashboard(){
   }catch(e){alert("Erreur de chargement : "+e.message)}
 }
 function renderUsers(list){
-  $("users").innerHTML=list.length?list.map(u=>`<div class="row"><div class="avatar">${initials(u.displayName||u.email)}</div><div class="info"><b>${esc(u.displayName||"Utilisateur")}</b><small>${esc(u.email||u.uid)}</small></div></div>`).join(""):'<div class="empty">Aucun utilisateur.</div>';
+  $("users").innerHTML=list.length?list.map(u=>`<div class="row"><div class="avatar">${initials(u.displayName||`${u.firstName||""} ${u.lastName||""}`)}</div><div class="info"><b>${esc(u.displayName||`${u.firstName||""} ${u.lastName||""}`.trim()||"Utilisateur")}</b><small>${esc(u.email||u.uid||u.id||"utilisateur")}</small></div></div>`).join(""):'<div class="empty">Aucun utilisateur.</div>';
 }
 function renderConversations(list){
   $("conversations").innerHTML=list.length?list.map(c=>{
-    const label=c.type==="group"?(c.name||"Groupe"):(c.memberEmails||[]).join(" ↔ ")||"Conversation privée";
+    const label=c.type==="group"?(c.name||"Groupe"):(c.memberNames||[]).join(" ↔ ")||"Conversation privée";
     return `<div class="row"><div class="avatar">${c.type==="group"?"👥":"💬"}</div><div class="info"><b>${esc(label)}</b><small>${c.type==="group"?"Groupe":"Privée"} · ${esc(c.id)}</small></div><button class="btn danger" data-del="${esc(c.id)}">Supprimer</button></div>`;
   }).join(""):'<div class="empty">Aucune conversation.</div>';
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const id=b.dataset.del;
-    if(!confirm("Supprimer cette conversation ? Les sous-collections de messages ne sont pas supprimées par cette action."))return;
-    try{await deleteDoc(doc(db,"conversations",id));await loadDashboard()}catch(e){alert("Suppression impossible : "+e.message)}
+    if(!confirm("Supprimer cette conversation ?"))return;
+    try{await dbRemove(dbRef(rtdb,`conversations/${id}`));await dbRemove(dbRef(rtdb,`groups/${id}`));await loadDashboard()}catch(e){alert("Suppression impossible : "+e.message)}
   });
 }
+loadAdminSession();
 </script>
 </body>
 </html>
