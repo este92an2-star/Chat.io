@@ -34,8 +34,9 @@
     .chatInfo{min-width:0;flex:1}.chatInfo b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chatInfo small{color:var(--muted)}
     .main{display:grid;grid-template-rows:auto 1fr auto;background:rgba(255,255,255,.02);min-width:0}
     .header{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:var(--panel)}
-    .headerInfo{flex:1}.headerInfo b{display:block}.headerInfo small{color:#27b98a}.headerActions{display:flex;gap:8px}
+    .headerInfo{flex:1}.headerInfo b{display:block}.headerInfo small{color:#27b98a}.headerActions{display:flex;gap:8px;flex-wrap:wrap}
     #messages{overflow:auto;padding:25px;display:flex;flex-direction:column;gap:9px}
+    .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:rgba(20,32,51,.92);color:#fff;padding:12px 18px;border-radius:999px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.2s ease;z-index:40}.toast.show{opacity:1}
     .day{text-align:center;color:var(--muted);font-size:12px;margin:8px}.msgRow{display:flex;max-width:75%;position:relative}.msgRow.mine{margin-left:auto}.bubble{background:var(--bubble);padding:9px 12px;border-radius:15px 15px 15px 4px;box-shadow:0 4px 18px rgba(0,0,0,.04)}
     .mine .bubble{background:var(--mine);color:var(--mineText);border-radius:15px 15px 4px 15px}.meta{font-size:10px;opacity:.65;margin-top:5px;text-align:right}.bubble img{max-width:280px;border-radius:10px;display:block}.bubble audio{max-width:260px}
     .file{display:flex;gap:10px;align-items:center}.file a{color:inherit}.empty{margin:auto;color:var(--muted);text-align:center}
@@ -44,7 +45,7 @@
     .login{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10}.card{width:min(430px,92vw);background:var(--panel);border:1px solid var(--line);padding:28px;border-radius:24px;box-shadow:var(--shadow)}
     .card h1{margin-top:0}.card input{width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:7px 0 12px}.card button{width:100%;padding:12px}
     .hidden{display:none!important}.modal{position:fixed;inset:0;background:#0008;display:grid;place-items:center;z-index:20}.modal .card{position:relative}.close{position:absolute;right:16px;top:14px}
-    @media(max-width:800px){.app{grid-template-columns:1fr}.sidebar{display:none}.sidebar.mobile{display:flex;position:fixed;inset:0;z-index:5;width:85%}.main{height:100vh}.msgRow{max-width:88%}}
+    @media(max-width:800px){.app{grid-template-columns:1fr}.sidebar{display:none}.sidebar.mobile{display:flex;position:fixed;inset:0;z-index:5;width:85%}.main{height:100vh}.msgRow{max-width:88%}.header{padding:12px 14px}.headerActions{justify-content:flex-end}.composer{padding:10px 12px;gap:6px}.composer input{padding:10px 12px}.callPanel{right:10px;bottom:80px;width:calc(100vw - 20px)}}
   </style>
 </head>
 <body>
@@ -68,7 +69,7 @@
     <div class="search"><span>⌕</span><input id="search" placeholder="Rechercher…"></div>
     <div id="chats"></div>
     <div style="padding:14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">🎨</button><button class="btn" id="goAdmin">⚙ Admin</button><button class="btn" id="logout">↪</button>
+      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">🎨</button><button class="btn" id="changePasswordBtn">🔑 Mdp</button><button class="btn" id="deleteAccountBtn">🗑 Compte</button><button class="btn" id="goAdmin">⚙ Admin</button><button class="btn" id="logout">↪</button>
     </div>
   </aside>
 
@@ -76,7 +77,7 @@
     <header class="header">
       <button class="btn round" id="mobileMenu">☰</button>
       <div id="headerAvatar" class="avatar">?</div><div class="headerInfo"><b id="headerName">Sélectionnez une conversation</b><small id="headerStatus">—</small></div>
-      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="addGroupMember" title="Ajouter un membre">＋</button><button class="btn" id="deleteConversation">🗑</button></div>
+      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="addGroupMember" title="Ajouter un membre">＋</button><button class="btn" id="renameGroupBtn" title="Renommer le groupe">✏️</button><button class="btn" id="leaveGroupBtn" title="Quitter le groupe">⇠</button><button class="btn" id="deleteConversation">🗑</button></div>
     </header>
     <section id="messages"><div class="empty">Choisissez une conversation ou créez-en une.</div></section>
     <footer class="composer">
@@ -89,9 +90,10 @@
   </main>
 </div>
 
-<div id="modal" class="modal hidden"><div class="card"><button class="btn close" id="closeModal">×</button><h2 id="modalTitle">Nouvelle discussion</h2><p id="modalHelp" style="color:var(--muted)"></p><input id="modalInput" placeholder="Email de l'utilisateur"><button class="btn primary" id="modalOk">Créer</button></div></div>
+<div id="modal" class="modal hidden"><div class="card"><button class="btn close" id="closeModal">×</button><h2 id="modalTitle">Nouvelle discussion</h2><p id="modalHelp" style="color:var(--muted)"></p><input id="modalInput" placeholder="Email de l'utilisateur"><div id="modalSuggestions" class="suggestions"></div><button class="btn primary" id="modalOk">Créer</button></div></div>
 <div id="customModal" class="modal hidden"><div class="card"><button class="btn close" id="closeCustom">×</button><h2>🎨 Personnaliser</h2><p style="color:var(--muted)">Choisissez la couleur principale.</p><div class="palette" id="palette"></div><label>Couleur personnalisée</label><input id="customColor" type="color" value="#6c5ce7" style="height:48px"><button class="btn primary" id="saveColor">Appliquer</button></div></div>
 <div id="callPanel" class="callPanel hidden"><div><b id="callTitle">Appel audio</b></div><div class="callAvatar" id="callAvatar">☎</div><div id="callState">Connexion…</div><div class="callTimer" id="callTimer">00:00</div><div class="callBtns"><button class="btn" id="muteCall">🎙</button><button class="btn" id="hangupCall">📵</button></div><audio id="remoteAudio" autoplay></audio></div>
+<div id="toast" class="toast" aria-live="polite"></div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
@@ -131,6 +133,14 @@
 
   const $=id=>document.getElementById(id);
   const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+  function showToast(message){
+    const toast=$("toast");
+    if(!toast) return;
+    toast.textContent=message;
+    toast.classList.add("show");
+    clearTimeout(showToast.timeoutId);
+    showToast.timeoutId=setTimeout(()=>toast.classList.remove("show"),2200);
+  }
   const initials=s=>String(s||"?").split(/[ @]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
   const normalizeName=(value)=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
   const buildUserKey=(first,last)=>{
@@ -246,6 +256,98 @@
   };
 
   $("goAdmin").onclick=()=>window.location.href="admin.html";
+
+  async function changeCurrentPassword(){
+    if(!me){ return alert("Vous devez être connecté."); }
+    const currentPassword=prompt("Mot de passe actuel :");
+    if(currentPassword===null) return;
+    const nextPassword=prompt("Nouveau mot de passe :");
+    if(nextPassword===null) return;
+    if((me.password||"")!==currentPassword){ return alert("Mot de passe actuel incorrect."); }
+    if(!nextPassword.trim()){ return alert("Le nouveau mot de passe est vide."); }
+    const updated={...me,password:String(nextPassword).trim()};
+    await dbSet(dbRef(rtdb,`users/${me.uid}`), updated);
+    me.password=updated.password;
+    alert("Mot de passe modifié.");
+  }
+
+  async function deleteCurrentUserAccount(){
+    if(!me){ return alert("Vous devez être connecté."); }
+    const password=prompt("Confirmez votre mot de passe pour supprimer votre compte :");
+    if(password===null) return;
+    if((me.password||"")!==password){ return alert("Mot de passe incorrect."); }
+    if(!confirm("Supprimer définitivement votre compte et toutes vos données ?")) return;
+    await dbRemove(dbRef(rtdb,`users/${me.uid}`));
+    sessionStorage.removeItem("messagerieUserKey");
+    me=null; active=null;
+    if(unsubChats) unsubChats();
+    if(unsubMessages) unsubMessages();
+    $("login").classList.remove("hidden");
+    $("messages").innerHTML='<div class="empty">Compte supprimé.</div>';
+    alert("Compte supprimé.");
+  }
+
+  $("changePasswordBtn").onclick=changeCurrentPassword;
+  $("deleteAccountBtn").onclick=deleteCurrentUserAccount;
+  $("renameGroupBtn").onclick=async()=>{
+    if(!active || active.type !== "group") return alert("Sélectionnez un groupe.");
+    if(active.ownerId !== me.uid) return alert("Seul le créateur peut renommer le groupe.");
+    const newName=prompt("Nouveau nom du groupe :", active.name || "");
+    if(newName===null) return;
+    const clean=String(newName).trim();
+    if(!clean) return alert("Le nom du groupe ne peut pas être vide.");
+    const updated={...active, name:clean, updatedAt:Date.now()};
+    await dbSet(dbRef(rtdb,`conversations/${active.id}`),{...(await dbGet(dbRef(rtdb,`conversations/${active.id}`))).val()||{}, ...updated});
+    await dbSet(dbRef(rtdb,`groups/${active.id}`),{...(await dbGet(dbRef(rtdb,`groups/${active.id}`))).val()||{}, ...updated});
+    for(const uid of updated.members || []){
+      await dbSet(dbRef(rtdb,`users/${uid}/conversations/${active.id}`),{...updated, id:active.id, name:clean});
+      await dbSet(dbRef(rtdb,`users/${uid}/groups/${active.id}`),{id:active.id, type:"group", name:clean});
+    }
+    active=updated;
+    showToast("Groupe renommé");
+  };
+
+  $("leaveGroupBtn").onclick=async()=>{
+    if(!active || active.type !== "group") return alert("Sélectionnez un groupe.");
+    if(active.ownerId === me.uid && (active.members || []).length > 1){
+      const nextMember=(active.members || []).find(uid => uid !== me.uid);
+      if(nextMember){
+        const nextSnap=await dbGet(dbRef(rtdb,`users/${nextMember}`));
+        const nextUser=nextSnap.val()||{};
+        const updated={...active, ownerId:nextMember, members:(active.members||[]).filter(uid => uid !== me.uid), memberNames:(active.memberNames||[]).filter(name => name !== `${me.firstName} ${me.lastName}`), updatedAt:Date.now()};
+        await dbSet(dbRef(rtdb,`conversations/${active.id}`),{...(await dbGet(dbRef(rtdb,`conversations/${active.id}`))).val()||{}, ...updated});
+        await dbSet(dbRef(rtdb,`groups/${active.id}`),{...(await dbGet(dbRef(rtdb,`groups/${active.id}`))).val()||{}, ...updated});
+        for(const uid of updated.members || []){
+          await dbSet(dbRef(rtdb,`users/${uid}/conversations/${active.id}`),{...updated, id:active.id, name: updated.name});
+        }
+        await dbRemove(dbRef(rtdb,`users/${me.uid}/conversations/${active.id}`));
+        await dbRemove(dbRef(rtdb,`users/${me.uid}/groups/${active.id}`));
+        active=updated;
+        showToast(`Vous avez quitté le groupe. ${nextUser.firstName||""} ${nextUser.lastName||""}`.trim() || "Le groupe a un nouveau propriétaire");
+        return;
+      }
+    }
+    if(active.ownerId === me.uid && (active.members || []).length <= 1){
+      await dbRemove(dbRef(rtdb,`conversations/${active.id}`));
+      await dbRemove(dbRef(rtdb,`groups/${active.id}`));
+      await dbRemove(dbRef(rtdb,`users/${me.uid}/conversations/${active.id}`));
+      await dbRemove(dbRef(rtdb,`users/${me.uid}/groups/${active.id}`));
+      active=null; $("messages").innerHTML='<div class="empty">Groupe supprimé.</div>';
+      showToast("Groupe supprimé");
+      return;
+    }
+    const updated={...active, members:(active.members||[]).filter(uid => uid !== me.uid), memberNames:(active.memberNames||[]).filter(name => name !== `${me.firstName} ${me.lastName}`), updatedAt:Date.now()};
+    await dbSet(dbRef(rtdb,`conversations/${active.id}`),{...(await dbGet(dbRef(rtdb,`conversations/${active.id}`))).val()||{}, ...updated});
+    await dbSet(dbRef(rtdb,`groups/${active.id}`),{...(await dbGet(dbRef(rtdb,`groups/${active.id}`))).val()||{}, ...updated});
+    for(const uid of updated.members || []){
+      await dbSet(dbRef(rtdb,`users/${uid}/conversations/${active.id}`),{...updated, id:active.id, name: updated.name});
+    }
+    await dbRemove(dbRef(rtdb,`users/${me.uid}/conversations/${active.id}`));
+    await dbRemove(dbRef(rtdb,`users/${me.uid}/groups/${active.id}`));
+    active=updated;
+    showToast("Vous avez quitté le groupe");
+  };
+
   $("logout").onclick=async()=>{
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
@@ -408,9 +510,36 @@
     if(m.storagePath){try{await deleteObject(ref(storage,m.storagePath))}catch{}}
   }
 
+  async function renderUserSuggestions(){
+    const input=$("modalInput");
+    if(input.dataset.searchMode !== "users"){ input.dataset.searchMode = "none"; $("modalSuggestions").classList.remove("visible"); $("modalSuggestions").innerHTML=""; return; }
+    const query=input.value.trim();
+    const list=$("modalSuggestions");
+    if(!query || query.length < 2){ list.classList.remove("visible"); list.innerHTML=""; return; }
+    const snap=await dbGet(dbRef(rtdb,"users"));
+    const users=Object.values(snap.val()||{}).filter(Boolean);
+    const matches=users.filter(user => {
+      const label=`${user.firstName||""} ${user.lastName||""}`.trim();
+      return label.toLowerCase().includes(query.toLowerCase()) || (user.displayName||"").toLowerCase().includes(query.toLowerCase()) || (user.uid||"").toLowerCase().includes(query.toLowerCase());
+    }).slice(0,6);
+    if(!matches.length){ list.classList.remove("visible"); list.innerHTML=""; return; }
+    list.innerHTML=matches.map(user => `<button class="suggestion" data-user-name="${esc(`${user.firstName||""} ${user.lastName||""}`.trim())}"><span>${esc(`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid)}</span><small>${esc(user.uid || "utilisateur")}</small></button>`).join("");
+    list.classList.add("visible");
+    list.querySelectorAll(".suggestion").forEach(button => {
+      button.onclick=()=>{
+        $("modalInput").value=button.dataset.userName || "";
+        list.classList.remove("visible");
+      };
+    });
+  }
+
   function modal(title,help,placeholder,callback){
     $("modalTitle").textContent=title;$("modalHelp").textContent=help;$("modalInput").placeholder=placeholder;$("modalInput").value="";
-    $("modal").classList.remove("hidden");$("modalOk").onclick=async()=>{const v=$("modalInput").value.trim();if(v){await callback(v);$("modal").classList.add("hidden")}};
+    $("modalInput").dataset.searchMode = placeholder === "Nom Prénom" ? "users" : "none";
+    $("modalSuggestions").innerHTML=""; $("modalSuggestions").classList.remove("visible");
+    $("modal").classList.remove("hidden");
+    $("modalInput").oninput=renderUserSuggestions;
+    $("modalOk").onclick=async()=>{const v=$("modalInput").value.trim();if(v){await callback(v);$("modal").classList.add("hidden");$("modalSuggestions").classList.remove("visible");}};
   }
   $("closeModal").onclick=()=>$("modal").classList.add("hidden");
 
