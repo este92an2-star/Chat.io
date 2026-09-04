@@ -7,12 +7,12 @@
 <style>
 :root{--bg:#080b13;--panel:#101522;--panel2:#151b2a;--text:#edf2ff;--muted:#8994aa;--line:#232c40;--accent:#6c5ce7;--danger:#ef476f;--ok:#20bf6b;--shadow:0 20px 60px rgba(0,0,0,.35)}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 10% 0%,rgba(108,92,231,.18),transparent 30%),var(--bg);color:var(--text);min-height:100vh}
-button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{display:flex;align-items:center;gap:12px;margin-bottom:24px}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(135deg,var(--accent),#00c2ff);display:grid;place-items:center;font-weight:900;color:#fff}.top h1{margin:0}.top small{color:var(--muted)}.spacer{flex:1}
+button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(135deg,var(--accent),#00c2ff);display:grid;place-items:center;font-weight:900;color:#fff}.top h1{margin:0}.top small{color:var(--muted)}.spacer{flex:1}
 .btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:10px 14px;cursor:pointer}.btn.primary{background:linear-gradient(135deg,var(--accent),#8e7cff);border:0;color:#fff}.btn.danger{background:var(--danger);border:0;color:#fff}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);margin-bottom:18px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.stat{background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:18px}.stat b{font-size:28px;display:block}.stat span{color:var(--muted)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.list{max-height:430px;overflow:auto}.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}.avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),#00b8f5);color:#fff;font-weight:800;flex:none}.info{min-width:0;flex:1}.info b,.info small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.info small{color:var(--muted)}.empty{color:var(--muted);padding:20px 0}.login{min-height:100vh;display:grid;place-items:center;padding:20px}.login .card{width:min(420px,94vw)}.card input{width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:8px 0 14px;outline:none}.hidden{display:none!important}.warning{color:#ffd166;background:#ffd16612;border:1px solid #ffd16644;border-radius:12px;padding:12px;margin-bottom:18px;font-size:13px}
-@media(max-width:800px){.stats,.grid{grid-template-columns:1fr}.wrap{padding:16px}}
+@media(max-width:800px){.stats,.grid{grid-template-columns:1fr}.wrap{padding:16px}.top{gap:8px}.top .spacer{display:none}.top .btn{flex:1 1 calc(50% - 8px);min-width:120px}} 
 </style>
 </head>
 <body>
@@ -34,7 +34,11 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
     <header class="top">
       <div class="logo">⚙</div><div><h1>Centre d’administration</h1><small id="adminEmail">—</small></div>
       <div class="spacer"></div>
+      <button class="btn primary" id="createUser">＋ Utilisateur</button>
+      <button class="btn" id="createGroupBtn">👥 Groupe</button>
       <button class="btn" id="refresh">↻ Actualiser</button>
+      <button class="btn" id="resetPasswordsBtn">🔐 Réinit. mdp</button>
+      <button class="btn" id="clearAll">🧹 Vider</button>
       <button class="btn" id="back">← Messagerie</button>
       <button class="btn" id="logout">↪</button>
     </header>
@@ -45,10 +49,15 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
       <div class="stat"><b id="userCount">0</b><span>Utilisateurs</span></div>
       <div class="stat"><b id="conversationCount">0</b><span>Conversations</span></div>
       <div class="stat"><b id="groupCount">0</b><span>Groupes</span></div>
+      <div class="stat"><b id="messageCount">0</b><span>Messages</span></div>
     </section>
 
     <div class="grid" style="margin-top:18px">
-      <section class="card"><h2>👤 Utilisateurs</h2><div id="users" class="list"><div class="empty">Chargement…</div></div></section>
+      <section class="card">
+        <h2>👤 Utilisateurs</h2>
+        <input id="userSearch" type="text" placeholder="Rechercher un utilisateur…" style="margin-bottom:12px; width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:var(--panel2); color:var(--text);">
+        <div id="users" class="list"><div class="empty">Chargement…</div></div>
+      </section>
       <section class="card"><h2>💬 Conversations</h2><div id="conversations" class="list"><div class="empty">Chargement…</div></div></section>
     </div>
   </div>
@@ -56,7 +65,7 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import {getDatabase,ref as dbRef,get as dbGet,remove as dbRemove} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import {getDatabase,ref as dbRef,get as dbGet,set as dbSet,remove as dbRemove} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
@@ -122,6 +131,268 @@ $("loginAdmin").onclick=async()=>{
 $("back").onclick=()=>location.href="index.html";
 $("logout").onclick=()=>{sessionStorage.removeItem("adminSessionKey"); $("gate").classList.remove("hidden"); $("admin").classList.add("hidden");};
 $("refresh").onclick=loadDashboard;
+$("userSearch").oninput=loadDashboard;
+
+function getUserDisplay(user){
+  return `${user?.firstName||""} ${user?.lastName||""}`.trim() || user?.displayName || user?.uid || "Utilisateur";
+}
+
+function getUserKeyFromObject(value){
+  return value?.uid || value?.id || value?.key || "";
+}
+
+async function findUsersByNames(list){
+  const names=(list||"").split(",").map(x=>x.trim()).filter(Boolean);
+  const usersSnap=await dbGet(dbRef(rtdb,"users"));
+  const users=usersSnap.val()||{};
+  const found=[];
+  for(const name of names){
+    const target=String(name).trim();
+    if(!target) continue;
+    const match=Object.values(users).find(u => {
+      const label=`${u?.firstName||""} ${u?.lastName||""}`.trim().toLowerCase();
+      return label === target.toLowerCase() || `${u?.firstName||""} ${u?.lastName||""}`.toLowerCase().includes(target.toLowerCase());
+    });
+    if(match && !found.some(u => (u.uid||u.id) === (match.uid||match.id))) found.push(match);
+  }
+  return found;
+}
+
+$("resetPasswordsBtn").onclick=async()=>{
+  const usersSnap=await dbGet(dbRef(rtdb,"users"));
+  const users=usersSnap.val()||{};
+  const newPassword=prompt("Nouveau mot de passe pour tous les comptes :","123456");
+  if(newPassword===null) return;
+  const clean=String(newPassword).trim();
+  if(!clean){ return alert("Le mot de passe ne peut pas être vide."); }
+  for(const key of Object.keys(users)){
+    const user=users[key];
+    if(user && typeof user === "object"){
+      await dbSet(dbRef(rtdb,`users/${key}`), { ...user, password: clean });
+    }
+  }
+  alert("Tous les mots de passe ont été réinitialisés.");
+  await loadDashboard();
+};
+
+async function resetUserPassword(key){
+  const userRef=dbRef(rtdb,`users/${key}`);
+  const snap=await dbGet(userRef);
+  if(!snap.exists()) return alert("Utilisateur introuvable.");
+  const user=snap.val();
+  const newPassword=prompt(`Nouveau mot de passe pour ${user.firstName||""} ${user.lastName||""}`.trim() || key);
+  if(newPassword===null) return;
+  const clean=String(newPassword).trim();
+  if(!clean) return alert("Le mot de passe ne peut pas être vide.");
+  await dbSet(userRef,{...user,password:clean});
+  alert("Mot de passe mis à jour.");
+  await loadDashboard();
+}
+
+async function createUserInDatabase(firstName,lastName,password){
+  const trimmedFirst=String(firstName||"").trim();
+  const trimmedLast=String(lastName||"").trim();
+  const trimmedPass=String(password||"").trim();
+  if(!trimmedFirst || !trimmedLast) throw new Error("Le prénom et le nom sont obligatoires.");
+  if(!trimmedPass) throw new Error("Le mot de passe est obligatoire.");
+  const key=buildUserKey(trimmedFirst,trimmedLast);
+  const userRef=dbRef(rtdb,`users/${key}`);
+  const snap=await dbGet(userRef);
+  if(snap.exists()) throw new Error("Ce compte existe déjà.");
+  const payload={
+    uid:key,
+    firstName:trimmedFirst,
+    lastName:trimmedLast,
+    displayName:`${trimmedFirst} ${trimmedLast}`,
+    password:trimmedPass,
+    createdAt:Date.now(),
+    conversations:{},
+    groups:{}
+  };
+  await dbSet(userRef,payload);
+  return key;
+}
+
+async function createGroupFromAdmin(){
+  const name=prompt("Nom du groupe :");
+  if(name===null) return;
+  const cleanName=String(name).trim();
+  if(!cleanName){ return alert("Le nom du groupe est obligatoire."); }
+  const membersPrompt=prompt("Ajouter des membres (séparés par des virgules, ex: Jean Dupont, Claire Martin) :", "");
+  const names=(membersPrompt||"").split(",").map(x=>x.trim()).filter(Boolean);
+  const usersSnap=await dbGet(dbRef(rtdb,"users"));
+  const users=usersSnap.val()||{};
+  const allMembers=[];
+  const memberNames=[];
+  for(const user of Object.values(users)){
+    if(!user) continue;
+    const uid=user.uid || user.id;
+    if(!uid) continue;
+    if(uid === sessionStorage.getItem("adminSessionKey")) continue;
+    const label=`${user.firstName||""} ${user.lastName||""}`.trim();
+    if(names.some(n => label.toLowerCase().includes(n.toLowerCase()))) {
+      allMembers.push(uid);
+      memberNames.push(label);
+    }
+  }
+  const groupId=`group_${Date.now()}`;
+  const group={
+    id: groupId,
+    type: "group",
+    name: cleanName,
+    members: [sessionStorage.getItem("adminSessionKey"), ...allMembers].filter(Boolean),
+    memberNames: [getUserDisplay((await dbGet(dbRef(rtdb, `users/${sessionStorage.getItem("adminSessionKey")}`))).val()||{}), ...memberNames].filter(Boolean),
+    ownerId: sessionStorage.getItem("adminSessionKey"),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    messages: {}
+  };
+  await dbSet(dbRef(rtdb,`conversations/${groupId}`), group);
+  await dbSet(dbRef(rtdb,`groups/${groupId}`), group);
+  for(const uid of group.members){
+    await dbSet(dbRef(rtdb, `users/${uid}/groups/${groupId}`), { id: groupId, type: "group", name: cleanName });
+    await dbSet(dbRef(rtdb, `users/${uid}/conversations/${groupId}`), { ...group, id: groupId, name: cleanName });
+  }
+  alert("Groupe créé.");
+  await loadDashboard();
+}
+
+$("createUser").onclick=async()=>{
+  const firstName=prompt("Prénom de l’utilisateur :");
+  if(firstName===null) return;
+  const lastName=prompt("Nom de l’utilisateur :");
+  if(lastName===null) return;
+  const password=prompt("Mot de passe :");
+  if(password===null) return;
+  try{
+    const key=await createUserInDatabase(firstName,lastName,password);
+    alert(`Compte créé : ${key}`);
+    await loadDashboard();
+  }catch(e){alert(e.message)}
+};
+
+$("createGroupBtn").onclick=createGroupFromAdmin;
+
+$("clearAll").onclick=async()=>{
+  if(!confirm("Supprimer toutes les conversations et tous les groupes ?")) return;
+  try{
+    await dbRemove(dbRef(rtdb,"conversations"));
+    await dbRemove(dbRef(rtdb,"groups"));
+    const usersSnap=await dbGet(dbRef(rtdb,"users"));
+    const users=usersSnap.val()||{};
+    for(const uid of Object.keys(users)){
+      await dbRemove(dbRef(rtdb,`users/${uid}/conversations`));
+      await dbRemove(dbRef(rtdb,`users/${uid}/groups`));
+    }
+    alert("Conversations et groupes supprimés.");
+    await loadDashboard();
+  }catch(e){alert("Erreur : "+e.message)}
+};
+
+async function deleteUserAccount(key){
+  if(!key || !confirm("Supprimer définitivement cet utilisateur ?")) return;
+  try{
+    const userSnap=await dbGet(dbRef(rtdb,`users/${key}`));
+    const user=userSnap.val();
+    if(user && user.conversations){
+      for(const conversationId of Object.keys(user.conversations)){
+        await dbRemove(dbRef(rtdb,`users/${key}/conversations/${conversationId}`));
+        const convSnap=await dbGet(dbRef(rtdb,`conversations/${conversationId}`));
+        const conv=convSnap.val()||{};
+        if(conv && conv.members){
+          const members=(conv.members||[]).filter(uid => uid !== key);
+          const updated={...conv, members, updatedAt:Date.now()};
+          await dbSet(dbRef(rtdb,`conversations/${conversationId}`), updated);
+          for(const uid of members){
+            await dbSet(dbRef(rtdb, `users/${uid}/conversations/${conversationId}`), { ...updated, id: conversationId, name: updated.name || conv.name });
+          }
+        }
+      }
+    }
+    if(user && user.groups){
+      for(const groupId of Object.keys(user.groups)){
+        await dbRemove(dbRef(rtdb,`users/${key}/groups/${groupId}`));
+      }
+    }
+    await dbRemove(dbRef(rtdb, `users/${key}`));
+    await loadDashboard();
+    alert("Utilisateur supprimé.");
+  }catch(e){alert("Suppression impossible : "+e.message)}
+}
+
+async function deleteConversationById(id){
+  if(!id || !confirm("Supprimer cette conversation ou ce groupe ?")) return;
+  try{
+    const convSnap=await dbGet(dbRef(rtdb,`conversations/${id}`));
+    const conv=convSnap.val()||{};
+    if(conv && conv.members){
+      for(const uid of conv.members){
+        await dbRemove(dbRef(rtdb, `users/${uid}/conversations/${id}`));
+        await dbRemove(dbRef(rtdb, `users/${uid}/groups/${id}`));
+      }
+    }
+    await dbRemove(dbRef(rtdb,`conversations/${id}`));
+    await dbRemove(dbRef(rtdb,`groups/${id}`));
+    await loadDashboard();
+    alert("Conversation / groupe supprimé.");
+  }catch(e){alert("Suppression impossible : "+e.message)}
+}
+
+async function cleanMessage(conversationId, messageId){
+  if(!conversationId || !messageId) return;
+  if(!confirm("Supprimer ce message ?")) return;
+  try{
+    const msgRef=dbRef(rtdb, `conversations/${conversationId}/messages/${messageId}`);
+    const snap=await dbGet(msgRef);
+    const message=snap.val();
+
+    if(message?.storagePath){
+      try {
+        await dbRemove(dbRef(rtdb, message.storagePath));
+      } catch (e) {
+        console.warn("Impossible de nettoyer le chemin storage :", e);
+      }
+    }
+
+    await dbRemove(msgRef);
+    const convSnap=await dbGet(dbRef(rtdb, `conversations/${conversationId}`));
+    const conv=convSnap.val()||{};
+    if(conv && conv.messages){
+      const remaining = Object.keys(conv.messages || {}).filter(id => id !== messageId);
+      const next = { ...conv, updatedAt: Date.now(), lastMessage: remaining.length ? conv.messages[remaining[remaining.length - 1]]?.text || "message" : "" };
+      await dbSet(dbRef(rtdb, `conversations/${conversationId}`), next);
+    }
+    await loadDashboard();
+    alert("Message nettoyé.");
+  }catch(e){alert("Nettoyage impossible : "+e.message)}
+}
+
+async function cleanConversationMessages(conversationId){
+  if(!conversationId || !confirm("Supprimer tous les messages de cette conversation ?")) return;
+  try{
+    const convSnap=await dbGet(dbRef(rtdb, `conversations/${conversationId}`));
+    const conv=convSnap.val()||{};
+    const messages=conv.messages || {};
+
+    for(const messageId of Object.keys(messages)){
+      const message=messages[messageId];
+      if(message && message.storagePath){
+        try { await dbRemove(dbRef(rtdb, message.storagePath)); } catch (e) { console.warn("storage déjà absent", e); }
+      }
+      await dbRemove(dbRef(rtdb, `conversations/${conversationId}/messages/${messageId}`));
+    }
+
+    await dbSet(dbRef(rtdb, `conversations/${conversationId}`), {
+      ...conv,
+      messages: {},
+      lastMessage: "",
+      updatedAt: Date.now()
+    });
+
+    await loadDashboard();
+    alert("Messages nettoyés.");
+  }catch(e){alert("Nettoyage impossible : "+e.message)}
+}
 
 async function loadDashboard(){
   try{
@@ -130,29 +401,84 @@ async function loadDashboard(){
       dbGet(dbRef(rtdb,"conversations")),
       dbGet(dbRef(rtdb,"groups"))
     ]);
+
     const users=[]; const usersObj=uSnap.val()||{}; Object.values(usersObj).forEach(u=>u&&users.push({id:u.uid||u.id,...u}));
     const conversations=[]; const convObj=cSnap.val()||{}; Object.values(convObj).forEach(c=>c&&conversations.push({id:c.id||c.uid||c.name,...c}));
     const groupsObj=gSnap.val()||{}; Object.values(groupsObj).forEach(g=>g&&conversations.push({id:g.id,...g}));
+
+    let messageTotal=0;
+    for(const c of conversations){
+      if(c && c.messages && typeof c.messages === "object"){
+        messageTotal += Object.keys(c.messages).length;
+      }
+    }
+
+    const term=String($("userSearch")?.value||"").trim().toLowerCase();
+    const filteredUsers=term ? users.filter(u => `${u.firstName||""} ${u.lastName||""}`.toLowerCase().includes(term) || (u.uid||u.id||"").toLowerCase().includes(term) || (u.displayName||"").toLowerCase().includes(term)) : users;
+
     $("userCount").textContent=users.length;
     $("conversationCount").textContent=conversations.length;
     $("groupCount").textContent=conversations.filter(c=>c.type==="group").length;
-    renderUsers(users);renderConversations(conversations);
+    $("messageCount").textContent=messageTotal;
+
+    renderUsers(filteredUsers);
+    renderConversations(conversations);
   }catch(e){alert("Erreur de chargement : "+e.message)}
 }
+
 function renderUsers(list){
-  $("users").innerHTML=list.length?list.map(u=>`<div class="row"><div class="avatar">${initials(u.displayName||`${u.firstName||""} ${u.lastName||""}`)}</div><div class="info"><b>${esc(u.displayName||`${u.firstName||""} ${u.lastName||""}`.trim()||"Utilisateur")}</b><small>${esc(u.email||u.uid||u.id||"utilisateur")}</small></div></div>`).join(""):'<div class="empty">Aucun utilisateur.</div>';
-}
-function renderConversations(list){
-  $("conversations").innerHTML=list.length?list.map(c=>{
-    const label=c.type==="group"?(c.name||"Groupe"):(c.memberNames||[]).join(" ↔ ")||"Conversation privée";
-    return `<div class="row"><div class="avatar">${c.type==="group"?"👥":"💬"}</div><div class="info"><b>${esc(label)}</b><small>${c.type==="group"?"Groupe":"Privée"} · ${esc(c.id)}</small></div><button class="btn danger" data-del="${esc(c.id)}">Supprimer</button></div>`;
-  }).join(""):'<div class="empty">Aucune conversation.</div>';
-  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
-    const id=b.dataset.del;
-    if(!confirm("Supprimer cette conversation ?"))return;
-    try{await dbRemove(dbRef(rtdb,`conversations/${id}`));await dbRemove(dbRef(rtdb,`groups/${id}`));await loadDashboard()}catch(e){alert("Suppression impossible : "+e.message)}
+  $("users").innerHTML=list.length ? list.map(u => {
+    const key = u.uid || u.id || "";
+    const displayName = getUserDisplay(u);
+    return `<div class="row"><div class="avatar">${initials(displayName)}</div><div class="info"><b>${esc(displayName)}</b><small>${esc(u.email || key || "utilisateur")}</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-reset-key="${esc(key)}">Mdp</button><button class="btn" data-copy-key="${esc(key)}">Clé</button><button class="btn danger" data-user-key="${esc(key)}">Supprimer</button></div></div>`;
+  }).join("") : '<div class="empty">Aucun utilisateur.</div>';
+
+  document.querySelectorAll("[data-reset-key]").forEach(button=>{
+    button.onclick=async()=>{
+      const key=button.dataset.resetKey;
+      if(!key) return;
+      await resetUserPassword(key);
+    };
+  });
+
+  document.querySelectorAll("[data-copy-key]").forEach(button=>{
+    button.onclick=async()=>{
+      const key=button.dataset.copyKey;
+      if(!key) return;
+      try{ await navigator.clipboard.writeText(key); alert("Clé copiée : "+key); }catch{ alert("Clé : "+key); }
+    };
+  });
+
+  document.querySelectorAll("[data-user-key]").forEach(button=>{
+    button.onclick=async()=>{
+      const key=button.dataset.userKey;
+      if(!key) return;
+      await deleteUserAccount(key);
+    };
   });
 }
+
+function renderConversations(list){
+  $("conversations").innerHTML=list.length ? list.map(c => {
+    const label = c.type === "group" ? (c.name || "Groupe") : ((c.memberNames && c.memberNames.length) ? c.memberNames.join(" ↔ ") : "Conversation privée");
+    const members = Array.isArray(c.members) ? c.members.length : 0;
+    const preview = c.lastMessage || (c.messages ? `${Object.keys(c.messages).length} messages` : "Aucun message");
+    return `<div class="row"><div class="avatar">${c.type === "group" ? "👥" : "💬"}</div><div class="info"><b>${esc(label)}</b><small>${c.type === "group" ? "Groupe" : "Privée"} · ${members} membre(s) · ${esc(preview)}</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-clean-conversation="${esc(c.id || "")}">Nettoyer</button><button class="btn danger" data-del="${esc(c.id || "")}">Supprimer</button></div></div>`;
+  }).join("") : '<div class="empty">Aucune conversation.</div>';
+
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.del;
+    if(!id) return;
+    await deleteConversationById(id);
+  });
+
+  document.querySelectorAll("[data-clean-conversation]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.cleanConversation;
+    if(!id) return;
+    await cleanConversationMessages(id);
+  });
+}
+
 loadAdminSession();
 </script>
 </body>
