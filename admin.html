@@ -80,7 +80,7 @@ $("loginAdmin").onclick=async()=>{
     await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);
   }catch(e){$("status").textContent=e.message}
 };
-$("back").onclick=()=>location.href="messagerie-futuriste-admin.html";
+$("back").onclick=()=>location.href="index.html";
 $("logout").onclick=()=>signOut(auth);
 $("refresh").onclick=loadDashboard;
 
