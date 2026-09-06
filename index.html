@@ -102,7 +102,7 @@
     <header class="header">
       <button class="btn round" id="mobileMenu">☰</button>
       <div id="headerAvatar" class="avatar">?</div><div class="headerInfo"><b id="headerName">Sélectionnez une conversation</b><small id="headerStatus">—</small></div>
-      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="addGroupMember" title="Ajouter un membre">＋</button><button class="btn" id="renameGroupBtn" title="Renommer le groupe">✏️</button><button class="btn" id="leaveGroupBtn" title="Quitter le groupe">⇠</button><button class="btn" id="deleteConversation">🗑</button></div>
+      <div class="headerActions"><button class="btn" id="audioCall" title="Appel audio">📞</button><button class="btn" id="addGroupMember" title="Ajouter un membre">＋</button><button class="btn" id="renameGroupBtn" title="Renommer le groupe">✏️</button><button class="btn" id="leaveGroupBtn" title="Quitter le groupe">⇠</button><button class="btn" id="downloadConversation" title="Télécharger le site">⬇ Site</button><button class="btn" id="deleteConversation">🗑</button></div>
     </header>
     <section id="messages"><div class="empty">Choisissez une conversation ou créez-en une.</div></section>
     <footer class="composer">
@@ -434,6 +434,25 @@
     $("messages").appendChild(row);
   }
 
+  function downloadCurrentWebsite(){
+    try{
+      const html = document.documentElement.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "messagerie-site.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("Site téléchargé");
+    }catch(err){
+      console.error(err);
+      alert("Téléchargement du site impossible : "+(err.message||err));
+    }
+  }
+
   async function sendMessage(text,kind="text",extra={}){
     if(!active||(!text&&kind==="text"))return;
     const message={text:text||"",kind,senderId:me.uid,senderEmail:me.displayName||`${me.firstName} ${me.lastName}`,createdAt:Date.now(),...extra};
@@ -611,6 +630,8 @@
     }
     active=null;$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
   };
+
+  $("downloadConversation").onclick=downloadCurrentWebsite;
 
   $("mobileMenu").onclick=()=>$("sidebar").classList.toggle("mobile");
   $("sidebar").addEventListener("click", e => {
