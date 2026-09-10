@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Appel audio — Messagerie</title>
+  <style>
+    :root{--bg:#080b13;--panel:#101522;--panel2:#151b2a;--text:#edf2ff;--muted:#8994aa;--line:#232c40;--accent:#6c5ce7;--accent2:#00c2ff;--shadow:0 20px 60px rgba(0,0,0,.35)}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 10% 0%,rgba(108,92,231,.18),transparent 30%),var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);width:min(520px,94vw);text-align:center}
+    .callAvatar{width:120px;height:120px;margin:6px auto;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;font-size:36px;font-weight:800}
+    .callState{color:var(--muted);margin:8px 0}
+    .callTimer{font-weight:700;margin-top:6px}
+    .controls{display:flex;justify-content:center;gap:12px;margin-top:16px}
+    .btn{border:0;background:var(--panel2);color:var(--text);border-radius:12px;padding:12px 16px;cursor:pointer}
+    .btn.danger{background:linear-gradient(135deg,#ef476f,#dc3e62);color:#fff}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#8e7cff);color:#fff}
+    audio{display:none}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="callAvatar" id="callAvatar">☎</div>
+    <h2 id="callTitle">Appel</h2>
+    <div id="callState" class="callState">Connexion…</div>
+    <div id="callTimer" class="callTimer">00:00</div>
+    <div class="controls">
+      <button class="btn" id="muteCall">🎙</button>
+      <button class="btn primary" id="answerCall">Accepter</button>
+      <button class="btn danger" id="hangupCall">Raccrocher</button>
+    </div>
+    <audio id="remoteAudio" autoplay></audio>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import { getDatabase, ref as dbRef, set as dbSet, get as dbGet, onValue, push, remove as dbRemove, onDisconnect } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
+      authDomain: "messagerie-cd2ba.firebaseapp.com",
+      databaseURL: "https://messagerie-cd2ba-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "messagerie-cd2ba",
+      storageBucket: "messagerie-cd2ba.firebasestorage.app",
+      messagingSenderId: "846140280738",
+      appId: "1:846140280738:web:03a0fb23ca8fa0e59bacfb",
+      measurementId: "G-S8CC69WLD4"
+    };
+
+    const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
+
+    const $ = id => document.getElementById(id);
+
+    let peer = null, localStream = null, callTimerInterval = null, muted = false;
+    const session = JSON.parse(sessionStorage.getItem('callSession') || 'null');
+
+    function formatDuration(seconds){const total=Math.max(0,Math.round(Number(seconds)||0));const minutes=Math.floor(total/60);const secs=total%60;return `${minutes}:${String(secs).padStart(2,'0')}`}
+
+    async function init(){
+      if(!session){ $('callState').textContent = 'Aucune session d\'appel.'; return; }
+      $('callTitle').textContent = session.title || 'Appel';
+      $('callAvatar').textContent = session.avatar || '☎';
+      if(session.mode === 'outgoing'){
+        startOutgoing(session.activeId);
+        $('answerCall').classList.add('hidden');
+      }else{
+        // incoming
+        $('callState').textContent = 'Appel entrant de ' + (session.callerEmail || 'un utilisateur');
+        $('answerCall').onclick = ()=>acceptIncoming(session.activeId, session.callId, session.callerEmail);
+      }
+      $('hangupCall').onclick = hangup;
+      $('muteCall').onclick = ()=>{ muted=!muted; localStream?.getAudioTracks().forEach(t=>t.enabled=!muted); $('muteCall').textContent = muted? '🔇':'🎙' };
+    }
+
+    async function startOutgoing(activeId){
+      try{
+        localStream = await navigator.mediaDevices.getUserMedia({audio:true});
+        peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+        localStream.getTracks().forEach(t=>peer.addTrack(t, localStream));
+        peer.ontrack = e => $('remoteAudio').srcObject = e.streams[0];
+        const callId = push(dbRef(rtdb, `calls/${activeId}`)).key;
+        const base = `calls/${activeId}/${callId}`;
+        const callRef = dbRef(rtdb, base);
+        const offerCandidates = dbRef(rtdb, `${base}/offerCandidates`);
+        const answerCandidates = dbRef(rtdb, `${base}/answerCandidates`);
+        peer.onicecandidate = e => e.candidate && dbSet(push(offerCandidates), e.candidate.toJSON());
+        const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
+        await dbSet(callRef, { callerId: session.meId, callerEmail: session.meName, offer:{type:offer.type, sdp:offer.sdp}, status:'ringing', createdAt:Date.now() });
+        onDisconnect(callRef).remove();
+        const unsubCall = onValue(callRef, async s => { const d = s.val(); if(!d) return; if(d.answer && !peer.currentRemoteDescription) await peer.setRemoteDescription(new RTCSessionDescription(d.answer)); if(d.status === 'ended' || d.status === 'declined') { stopLocal(); window.close(); } });
+        const unsubAnswers = onValue(answerCandidates, s => s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})) );
+        startTimer();
+        // store live callId so hangup can end it
+        sessionStorage.setItem('activeCallRef', `${activeId}/${callId}`);
+        $('callState').textContent = 'Appel en cours…';
+      }catch(e){ console.error(e); stopLocal(); alert('Impossible de démarrer l\'appel : '+e.message); }
+    }
+
+    async function acceptIncoming(activeId, callId, callerEmail){
+      try{
+        localStream = await navigator.mediaDevices.getUserMedia({audio:true});
+        peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+        localStream.getTracks().forEach(t=>peer.addTrack(t, localStream));
+        peer.ontrack = e => $('remoteAudio').srcObject = e.streams[0];
+        const base = `calls/${activeId}/${callId}`;
+        const callRef = dbRef(rtdb, base);
+        const offerCandidates = dbRef(rtdb, `${base}/offerCandidates`);
+        const answerCandidates = dbRef(rtdb, `${base}/answerCandidates`);
+        onValue(offerCandidates, s => s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));
+        peer.onicecandidate = e => e.candidate && dbSet(push(answerCandidates), e.candidate.toJSON());
+        const snap = await dbGet(callRef);
+        const data = snap.val()||{};
+        if(!data.offer) throw new Error('Offre introuvable');
+        await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peer.createAnswer(); await peer.setLocalDescription(answer);
+        await dbSet(dbRef(rtdb, `${base}/answer`), { type: answer.type, sdp: answer.sdp });
+        await dbSet(dbRef(rtdb, `${base}/status`), 'active');
+        sessionStorage.setItem('activeCallRef', `${activeId}/${callId}`);
+        $('callState').textContent = 'En communication'; startTimer();
+      }catch(e){ console.error(e); stopLocal(); alert('Impossible d\'accepter l\'appel : '+e.message); }
+    }
+
+    function startTimer(){
+      const started = Date.now(); callTimerInterval = setInterval(()=>{$('callTimer').textContent = new Date(Date.now()-started).toISOString().slice(14,19)},1000);
+    }
+
+    async function hangup(){
+      try{
+        // If incoming and not yet accepted, mark as declined
+        if(session && session.mode === 'incoming'){
+          if(session.callId){
+            await dbSet(dbRef(rtdb, `calls/${session.activeId}/${session.callId}/status`), 'declined');
+          } else {
+            const activeRef = sessionStorage.getItem('activeCallRef');
+            if(activeRef){ const parts = activeRef.split('/'); await dbSet(dbRef(rtdb, `calls/${parts[0]}/${parts[1]}/status`), 'ended'); }
+          }
+        } else {
+          const activeRef = sessionStorage.getItem('activeCallRef');
+          if(activeRef){ const parts = activeRef.split('/'); await dbSet(dbRef(rtdb, `calls/${parts[0]}/${parts[1]}/status`), 'ended'); }
+        }
+      }catch(e){ console.error('hangup error', e); }
+      stopLocal();
+      sessionStorage.removeItem('activeCallRef');
+      sessionStorage.removeItem('callSession');
+      // navigate back to main app
+      window.location.href = 'index.html';
+    }
+
+    function stopLocal(){ if(peer){ peer.close(); peer=null; } if(localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream=null; } if(callTimerInterval) clearInterval(callTimerInterval); callTimerInterval=null; }
+
+    window.addEventListener('beforeunload', async ()=>{ const activeRef = sessionStorage.getItem('activeCallRef'); if(activeRef){ const parts = activeRef.split('/'); await dbSet(dbRef(rtdb, `calls/${parts[0]}/${parts[1]}/status`), 'ended'); } });
+
+    init();
+  </script>
+</body>
+</html>
