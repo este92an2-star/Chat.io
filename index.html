@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#5f60e8">
   <link rel="manifest" href="./manifest.webmanifest">
-  <title>Messagerie</title>
+  <title>Messagerie — Firebase</title>
   <style>
     :root{
       --bg:#eef4fb;--panel:#ffffff;--panel2:#f5f7fb;--text:#111827;--muted:#667085;
@@ -126,7 +126,6 @@
 
 <div id="modal" class="modal hidden"><div class="card"><button class="close" id="closeModal" title="Fermer">×</button><h2 id="modalTitle">Nouvelle discussion</h2><p id="modalHelp" style="color:var(--muted)"></p><input id="modalInput" placeholder="Email de l'utilisateur"><div id="modalSuggestions" class="suggestions"></div><button class="btn primary" id="modalOk">Créer</button></div></div>
 <div id="customModal" class="modal hidden"><div class="card"><button class="close" id="closeCustom" title="Fermer">×</button><h2>🎨 Personnaliser</h2><p style="color:var(--muted)">Choisissez la couleur principale.</p><div class="palette" id="palette"></div><label>Couleur personnalisée</label><input id="customColor" type="color" value="#6c5ce7" style="height:48px"><button class="btn primary" id="saveColor">Appliquer</button></div></div>
-<div id="callPanel" class="callPanel hidden"><div><b id="callTitle">Appel audio</b></div><div class="callAvatar" id="callAvatar">☎</div><div id="callState">Connexion…</div><div class="callTimer" id="callTimer">00:00</div><div class="callBtns"><button class="btn" id="muteCall">🎙</button><button class="btn" id="hangupCall">📵</button></div><audio id="remoteAudio" autoplay></audio></div>
 <div id="toast" class="toast" aria-live="polite"></div>
 
 <script type="module">
@@ -147,7 +146,8 @@
 
   const app = initializeApp(firebaseConfig), storage = getStorage(app), rtdb = getDatabase(app);
   let me=null, active=null, unsubChats=null, unsubMessages=null, recorder=null, chunks=[];
-  let peer=null, localStream=null, callId=null, callUnsubs=[], callTimerInterval=null, muted=false, incomingCallUnsub=null;
+  let incomingCallUnsub=null;
+  let callListeners = {}; // { convId: unsubscribe }
   let voiceRecordingStartedAt=0, voiceReadyBlob=null, voiceReadyMeta=null, voiceTimerInterval=null;
 
   function encodeEmail(email) {
@@ -267,6 +267,46 @@
     me={uid:key,...snap.val()};
     $("login").classList.add("hidden");
     await listenChats();
+    // start global call listeners for this user
+    setupCallListeners();
+  }
+
+  function setupCallListeners(){
+    if(!me) return;
+    // Listen to the user's conversations list and attach per-conversation call listeners
+    const convRef = dbRef(rtdb, `users/${me.uid}/conversations`);
+    if(incomingCallUnsub) incomingCallUnsub();
+    incomingCallUnsub = onValue(convRef, snap => {
+      const convs = snap.val() || {};
+      const ids = Object.keys(convs || {});
+      // add listeners for new convs
+      ids.forEach(id => {
+        if(callListeners[id]) return;
+        const unsub = onValue(dbRef(rtdb, `calls/${id}`), callsSnap => {
+          const calls = callsSnap.val() || {};
+          for(const [callId, d] of Object.entries(calls)){
+            if(!d) continue;
+            if(d.callerId && d.callerId !== me.uid && d.status === 'ringing'){
+              // redirect to call page as receiver
+              const existing = sessionStorage.getItem('callSession');
+              if(existing) break; // already handling a session
+              const sess = { mode: 'incoming', activeId: id, callId: callId, callerEmail: d.callerEmail, meId: me.uid, meName: me.displayName||`${me.firstName} ${me.lastName}` };
+              sessionStorage.setItem('callSession', JSON.stringify(sess));
+              window.location.href = 'call.html';
+              return;
+            }
+          }
+        });
+        callListeners[id] = unsub;
+      });
+      // remove listeners for convs that no longer exist
+      Object.keys(callListeners).forEach(existingId => {
+        if(!ids.includes(existingId)){
+          try{ callListeners[existingId] && callListeners[existingId](); }catch{};
+          delete callListeners[existingId];
+        }
+      });
+    });
   }
 
   const savedTheme=localStorage.getItem("messagerie-theme")||"dark"; document.documentElement.dataset.theme=savedTheme;
@@ -437,7 +477,19 @@
     if(unsubMessages)unsubMessages();
     if(incomingCallUnsub){ incomingCallUnsub(); incomingCallUnsub=null; }
     if(c.type === "private") {
-      watchIncoming();
+      if(incomingCallUnsub){ incomingCallUnsub(); incomingCallUnsub = null; }
+      incomingCallUnsub = onValue(dbRef(rtdb, `calls/${c.id}`), snap => {
+        const calls = snap.val() || {};
+        for(const [id,d] of Object.entries(calls)){
+          if(d && d.callerId && d.callerId !== me.uid && d.status === 'ringing'){
+            // préparation de la session d'appel et redirection vers call.html
+            const sess = { mode: 'incoming', activeId: c.id, callId: id, callerEmail: d.callerEmail, meId: me.uid, meName: me.displayName||`${me.firstName} ${me.lastName}` };
+            sessionStorage.setItem('callSession', JSON.stringify(sess));
+            window.location.href = 'call.html';
+            return;
+          }
+        }
+      });
     }
     const messagesRef=dbRef(rtdb,`conversations/${c.id}/messages`);
     unsubMessages=onValue(messagesRef,snap=>{
@@ -608,66 +660,17 @@
   };
   $("sendVoice").onclick=sendRecordedVoice;
 
-  function stopCall(){
-    callUnsubs.forEach(u=>u&&u()); callUnsubs=[];
-    if(peer){peer.close();peer=null}
-    if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}
-    if(callTimerInterval)clearInterval(callTimerInterval); callTimerInterval=null;
-    $("callPanel").classList.add("hidden"); $("remoteAudio").srcObject=null; callId=null;
-  }
-  async function startAudioCall(){
+  // Les opérations d'appel sont maintenant gérées par `call.html`.
+  function stopCall(){ /* géré dans call.html */ }
+  function startAudioCall(){
     if(!active || active.type!=="private") return alert("Les appels audio sont disponibles uniquement en conversation privée.");
-    if(callId)return;
-    try{
-      localStream=await navigator.mediaDevices.getUserMedia({audio:true});
-      peer=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-      localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));
-      peer.ontrack=e=>$("remoteAudio").srcObject=e.streams[0];
-      callId=push(dbRef(rtdb,`calls/${active.id}`)).key;
-      const base=`calls/${active.id}/${callId}`;
-      const callRef=dbRef(rtdb,base), offerC=dbRef(rtdb,`${base}/offerCandidates`), answerC=dbRef(rtdb,`${base}/answerCandidates`);
-      peer.onicecandidate=e=>e.candidate&&dbSet(push(offerC),e.candidate.toJSON());
-      const offer=await peer.createOffer();await peer.setLocalDescription(offer);
-      await dbSet(callRef,{callerId:me.uid,callerEmail:me.displayName||`${me.firstName} ${me.lastName}`,offer:{type:offer.type,sdp:offer.sdp},status:"ringing",createdAt:Date.now()});
-      onDisconnect(callRef).remove();
-      const u=onValue(callRef,async s=>{const d=s.val();if(!d)return;if(d.answer&&!peer.currentRemoteDescription)await peer.setRemoteDescription(new RTCSessionDescription(d.answer));if(d.status==="ended"||d.status==="declined")stopCall()});callUnsubs.push(u);
-      const u2=onValue(answerC,s=>s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));callUnsubs.push(u2);
-      $("callTitle").textContent="Appel vers "+$("headerName").textContent;$("callAvatar").textContent=initials($("headerName").textContent);$("callState").textContent="Appel en cours…";$("callPanel").classList.remove("hidden");
-      const started=Date.now();callTimerInterval=setInterval(()=>{$("callTimer").textContent=new Date(Date.now()-started).toISOString().slice(14,19)},1000);
-    }catch(e){stopCall();alert("Microphone indisponible : "+e.message)}
+    const session = { mode: 'outgoing', activeId: active.id, meId: me.uid, meName: me.displayName||`${me.firstName} ${me.lastName}`, title: `Appel vers ${active.name||$("headerName").textContent}` };
+    sessionStorage.setItem('callSession', JSON.stringify(session));
+    window.location.href = 'call.html';
   }
-  async function watchIncoming(){
-    if(!active||active.type!=="private")return;
-    if(incomingCallUnsub){ incomingCallUnsub(); }
-    incomingCallUnsub=onValue(dbRef(rtdb,`calls/${active.id}`),snap=>{
-      const calls=snap.val()||{};
-      for(const [id,d] of Object.entries(calls)){
-        if(d && d.callerId && d.callerId !== me.uid && d.status === "ringing" && !callId){
-          if(confirm(`Appel audio entrant de ${d.callerEmail || "un utilisateur"}. Accepter ?`)) acceptAudioCall(id,d);
-          else dbSet(dbRef(rtdb,`calls/${active.id}/${id}/status`),"declined");
-        }
-      }
-    });
-    callUnsubs.push(incomingCallUnsub);
-  }
-  async function acceptAudioCall(id,d){
-    try{
-      callId=id;localStream=await navigator.mediaDevices.getUserMedia({audio:true});
-      peer=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-      localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));peer.ontrack=e=>$("remoteAudio").srcObject=e.streams[0];
-      const base=`calls/${active.id}/${id}`, callRef=dbRef(rtdb,base), offerC=dbRef(rtdb,`${base}/offerCandidates`), answerC=dbRef(rtdb,`${base}/answerCandidates`);
-      onValue(offerC,s=>s.forEach(x=>peer.addIceCandidate(new RTCIceCandidate(x.val())).catch(()=>{})));
-      peer.onicecandidate=e=>e.candidate&&dbSet(push(answerC),e.candidate.toJSON());
-      await peer.setRemoteDescription(new RTCSessionDescription(d.offer));
-      const answer=await peer.createAnswer();await peer.setLocalDescription(answer);
-      await dbSet(dbRef(rtdb,`${base}/answer`),{type:answer.type,sdp:answer.sdp});await dbSet(dbRef(rtdb,`${base}/status`),"active");
-      $("callTitle").textContent="Appel avec "+d.callerEmail;$("callAvatar").textContent=initials(d.callerEmail);$("callState").textContent="En communication";$("callPanel").classList.remove("hidden");
-      const started=Date.now();callTimerInterval=setInterval(()=>{$("callTimer").textContent=new Date(Date.now()-started).toISOString().slice(14,19)},1000);
-    }catch(e){stopCall();alert("Impossible d’accepter l’appel : "+e.message)}
-  }
+  // La logique d'appel (création/acceptation) a été déplacée dans call.html.
+  // Les actions d'appel dans l'interface principale redirigent maintenant vers la page d'appel dédiée.
   $("audioCall").onclick=startAudioCall;
-  $("hangupCall").onclick=async()=>{if(active&&callId)await dbSet(dbRef(rtdb,`calls/${active.id}/${callId}/status`),"ended");stopCall()};
-  $("muteCall").onclick=()=>{muted=!muted;localStream?.getAudioTracks().forEach(t=>t.enabled=!muted);$("muteCall").textContent=muted?"🔇":"🎙"};
 
   async function deleteMessage(m){
     if(m.senderId!==me.uid)return;
