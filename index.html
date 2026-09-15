@@ -101,7 +101,7 @@
     <div class="search"><span>⌕</span><input id="search" placeholder="Rechercher une discussion…"></div>
     <div id="chats"></div>
     <div style="padding:14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">🎨 Couleur</button><button class="btn" id="changePasswordBtn">🔑 Mot de passe</button><button class="btn" id="deleteAccountBtn">🗑 Compte</button><button class="btn" id="goAdmin">⚙ Admin</button><button class="btn" id="logout">↪ Déconnexion</button>
+      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">🎨 Couleur</button><button class="btn" id="changePasswordBtn">🔑 Mot de passe</button><button class="btn" id="deleteAccountBtn">🗑 Compte</button><button class="btn" id="goAdmin" style="display:none">⚙ Admin</button><button class="btn" id="logout">↪ Déconnexion</button>
     </div>
   </aside>
 
@@ -167,6 +167,10 @@
   }
 
   const $=id=>document.getElementById(id);
+  function updateAdminButton(){
+    const adminButton=$("goAdmin");
+    if(adminButton) adminButton.style.display=me && Number(me.level)===1 ? "inline-block" : "none";
+  }
   const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
   function showToast(message, type="info"){
     const toast=$("toast");
@@ -235,7 +239,8 @@
       password,
       createdAt:Date.now(),
       conversations:{},
-      groups:{}
+      groups:{},
+      level:0
     };
     await dbSet(userRef,payload);
     return key;
@@ -255,6 +260,7 @@
     if((user.password||"")!==password){throw new Error("Mot de passe incorrect.");}
     me={uid:key,...user,displayName:user.displayName||`${user.firstName} ${user.lastName}`};
     sessionStorage.setItem("messagerieUserKey",key);
+    updateAdminButton();
     $("login").classList.add("hidden");
     await listenChats();
   }
@@ -265,6 +271,7 @@
     const snap=await dbGet(dbRef(rtdb,`users/${key}`));
     if(!snap.exists()){ sessionStorage.removeItem("messagerieUserKey"); $("login").classList.remove("hidden"); return; }
     me={uid:key,...snap.val()};
+    updateAdminButton();
     $("login").classList.add("hidden");
     await listenChats();
     // start global call listeners for this user
@@ -346,7 +353,10 @@
     }catch(e){$("authStatus").textContent=e.message}
   };
 
-  $("goAdmin").onclick=()=>window.location.href="admin.html";
+  $("goAdmin").onclick=()=>{
+    if(!me || Number(me.level)!==1) return;
+    window.location.href="connection.html";
+  };
 
   async function changeCurrentPassword(){
     if(!me){ return alert("Vous devez être connecté."); }
@@ -371,6 +381,7 @@
     await dbRemove(dbRef(rtdb,`users/${me.uid}`));
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    updateAdminButton();
     if(unsubChats) unsubChats();
     if(unsubMessages) unsubMessages();
     $("login").classList.remove("hidden");
@@ -442,6 +453,7 @@
   $("logout").onclick=async()=>{
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    updateAdminButton();
     if(unsubChats) unsubChats();
     if(unsubMessages) unsubMessages();
     $("login").classList.remove("hidden");
