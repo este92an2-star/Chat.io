@@ -16,20 +16,7 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
 </style>
 </head>
 <body>
-<div id="gate" class="login">
-  <div class="card">
-    <div class="top"><div class="logo">⚙</div><div><h1>Administration</h1><small>Accès protégé</small></div></div>
-    <p style="color:var(--muted)">Connectez-vous avec un compte déjà créé dans la console Firebase puis entrez le code administrateur.</p>
-    <input id="lastName" type="text" placeholder="Nom">
-    <input id="firstName" type="text" placeholder="Prénom">
-    <input id="password" type="password" placeholder="Mot de passe">
-    <input id="adminCode" type="password" inputmode="numeric" maxlength="4" placeholder="Code administrateur">
-    <button class="btn primary" id="loginAdmin" style="width:100%">Entrer</button>
-    <p id="status" style="color:var(--muted);font-size:13px"></p>
-  </div>
-</div>
-
-<div id="admin" class="hidden">
+<div id="admin">
   <div class="wrap">
     <header class="top">
       <div class="logo">⚙</div><div><h1>Centre d’administration</h1><small id="adminEmail">—</small></div>
@@ -37,12 +24,14 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
       <button class="btn primary" id="createUser">＋ Utilisateur</button>
       <button class="btn" id="createGroupBtn">👥 Groupe</button>
       <button class="btn" id="refresh">↻ Actualiser</button>
+      <button class="btn" id="changeAdminPassword">🔐 Mdp admin</button>
       <button class="btn" id="resetPasswordsBtn">🔐 Réinit. mdp</button>
       <button class="btn" id="clearAll">🧹 Vider</button>
       <button class="btn" id="back">← Messagerie</button>
       <button class="btn" id="logout">↪</button>
     </header>
 
+    
     <section class="stats">
       <div class="stat"><b id="userCount">0</b><span>Utilisateurs</span></div>
       <div class="stat"><b id="conversationCount">0</b><span>Conversations</span></div>
@@ -63,7 +52,7 @@ button,input{font:inherit}.wrap{max-width:1200px;margin:auto;padding:28px}.top{d
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import {getDatabase,ref as dbRef,get as dbGet,set as dbSet,remove as dbRemove} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import {getDatabase,ref as dbRef,get as dbGet,set as dbSet,remove as dbRemove,update as dbUpdate} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
@@ -98,38 +87,51 @@ async function resolveUserKey(firstName,lastName){
 
 async function loadAdminSession(){
   const key=sessionStorage.getItem("adminSessionKey");
-  if(!key){ $("gate").classList.remove("hidden"); $("admin").classList.add("hidden"); return; }
+  const authorized=sessionStorage.getItem("adminSessionAuthorized")==="true";
+  if(!key || !authorized){ window.location.replace("index.html"); return; }
   const snap=await dbGet(dbRef(rtdb,`users/${key}`));
-  if(!snap.exists()){ sessionStorage.removeItem("adminSessionKey"); $("gate").classList.remove("hidden"); $("admin").classList.add("hidden"); return; }
+  if(!snap.exists()){ sessionStorage.removeItem("adminSessionKey"); sessionStorage.removeItem("adminSessionAuthorized"); window.location.replace("index.html"); return; }
   const user=snap.val();
-  $("gate").classList.add("hidden"); $("admin").classList.remove("hidden"); $("adminEmail").textContent=`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid;
+  if(Number(user.level)<1){ sessionStorage.removeItem("adminSessionKey"); sessionStorage.removeItem("adminSessionAuthorized"); window.location.replace("index.html"); return; }
+  if(Number(user.level)!==1){ await dbUpdate(dbRef(rtdb,`users/${key}`),{level:1}); user.level=1; }
+  $("adminEmail").textContent=`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid;
   await loadDashboard();
 }
 
-$("loginAdmin").onclick=async()=>{
-  try{
-    const firstName=($("firstName")?.value||"").trim();
-    const lastName=($("lastName")?.value||"").trim();
-    const password=($("password")?.value||"").trim();
-    const adminCode=($("adminCode")?.value||"").trim();
-    if(!firstName || !lastName) throw new Error("Renseignez votre nom et votre prénom.");
-    if(!password) throw new Error("Renseignez un mot de passe.");
-    if(adminCode!=="0723") throw new Error("Code administrateur incorrect.");
-    const result=await resolveUserKey(firstName,lastName);
-    if(!result) throw new Error("Compte introuvable dans la base temps réel.");
-    const {key,user}=result;
-    if((user.password||"")!==password) throw new Error("Mot de passe incorrect.");
-    sessionStorage.setItem("adminSessionKey",key);
-    $("status").textContent="Accès autorisé";
-    $("gate").classList.add("hidden"); $("admin").classList.remove("hidden"); $("adminEmail").textContent=`${user.firstName||""} ${user.lastName||""}`.trim() || user.uid;
-    await loadDashboard();
-  }catch(e){$("status").textContent=e.message}
-};
-
 $("back").onclick=()=>location.href="index.html";
-$("logout").onclick=()=>{sessionStorage.removeItem("adminSessionKey"); $("gate").classList.remove("hidden"); $("admin").classList.add("hidden");};
+$("logout").onclick=()=>{sessionStorage.removeItem("adminSessionKey"); sessionStorage.removeItem("adminSessionAuthorized"); window.location.replace("index.html");};
 $("refresh").onclick=loadDashboard;
 $("userSearch").oninput=loadDashboard;
+
+function isStrongPassword(password){
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{12,}$/.test(password);
+}
+
+$("changeAdminPassword").onclick=async()=>{
+  const key=sessionStorage.getItem("adminSessionKey");
+  if(!key) return;
+  const current=prompt("Mot de passe admin actuel :");
+  if(current===null) return;
+  const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+  const user=snap.val()||{};
+  if(current!==user.password) return alert("Mot de passe actuel incorrect.");
+  const next=prompt("Nouveau mot de passe admin (12 caractères, majuscule, minuscule, chiffre et symbole) :");
+  if(next===null) return;
+  if(!isStrongPassword(next)) return alert("Le mot de passe doit contenir au moins 12 caractères, une majuscule, une minuscule, un chiffre et un symbole.");
+  await dbUpdate(dbRef(rtdb,`users/${key}`),{password:next});
+  alert("Mot de passe administrateur mis à jour.");
+};
+
+async function changeUserLevel(key,delta){
+  const adminKey=sessionStorage.getItem("adminSessionKey");
+  if(!key || key===adminKey) return alert("Le niveau de l’administrateur ne peut pas être modifié ici.");
+  const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+  if(!snap.exists()) return alert("Utilisateur introuvable.");
+  const user=snap.val()||{};
+  const level=Math.max(0,Math.min(1,(Number(user.level)||0)+delta));
+  await dbUpdate(dbRef(rtdb,`users/${key}`),{level});
+  await loadDashboard();
+}
 
 function getUserDisplay(user){
   return `${user?.firstName||""} ${user?.lastName||""}`.trim() || user?.displayName || user?.uid || "Utilisateur";
@@ -205,7 +207,8 @@ async function createUserInDatabase(firstName,lastName,password){
     password:trimmedPass,
     createdAt:Date.now(),
     conversations:{},
-    groups:{}
+    groups:{},
+    level:0
   };
   await dbSet(userRef,payload);
   return key;
@@ -241,13 +244,13 @@ async function createGroupFromAdmin(){
     members: [sessionStorage.getItem("adminSessionKey"), ...allMembers].filter(Boolean),
     memberNames: [getUserDisplay((await dbGet(dbRef(rtdb, `users/${sessionStorage.getItem("adminSessionKey")}`))).val()||{}), ...memberNames].filter(Boolean),
     ownerId: sessionStorage.getItem("adminSessionKey"),
-    createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: {}
   };
-  await dbSet(dbRef(rtdb,`conversations/${groupId}`), group);
   await dbSet(dbRef(rtdb,`groups/${groupId}`), group);
+  await dbSet(dbRef(rtdb,`conversations/${groupId}`), group);
   for(const uid of group.members){
+
     await dbSet(dbRef(rtdb, `users/${uid}/groups/${groupId}`), { id: groupId, type: "group", name: cleanName });
     await dbSet(dbRef(rtdb, `users/${uid}/conversations/${groupId}`), { ...group, id: groupId, name: cleanName });
   }
@@ -428,8 +431,12 @@ function renderUsers(list){
   $("users").innerHTML=list.length ? list.map(u => {
     const key = u.uid || u.id || "";
     const displayName = getUserDisplay(u);
-    return `<div class="row"><div class="avatar">${initials(displayName)}</div><div class="info"><b>${esc(displayName)}</b><small>${esc(u.email || key || "utilisateur")}</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-reset-key="${esc(key)}">Mdp</button><button class="btn" data-copy-key="${esc(key)}">Clé</button><button class="btn danger" data-user-key="${esc(key)}">Supprimer</button></div></div>`;
+    const level=Math.max(0,Math.min(1,Number(u.level)||0));
+    return `<div class="row"><div class="avatar">${initials(displayName)}</div><div class="info"><b>${esc(displayName)}${level===1 ? " · Admin" : ""}</b><small>${esc(u.email || key || "utilisateur")} · Niveau ${level}/1</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-level-down="${esc(key)}" title="Baisser le niveau">−</button><button class="btn" data-level-up="${esc(key)}" title="Augmenter le niveau">＋</button><button class="btn" data-reset-key="${esc(key)}">Mdp</button><button class="btn" data-copy-key="${esc(key)}">Clé</button><button class="btn danger" data-user-key="${esc(key)}">Supprimer</button></div></div>`;
   }).join("") : '<div class="empty">Aucun utilisateur.</div>';
+
+  document.querySelectorAll("[data-level-up]").forEach(button=>button.onclick=()=>changeUserLevel(button.dataset.levelUp,1));
+  document.querySelectorAll("[data-level-down]").forEach(button=>button.onclick=()=>changeUserLevel(button.dataset.levelDown,-1));
 
   document.querySelectorAll("[data-reset-key]").forEach(button=>{
     button.onclick=async()=>{
