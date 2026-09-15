@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connexion administrateur — Messagerie</title>
+<style>
+:root{--bg:#080b13;--panel:#101522;--panel2:#151b2a;--text:#edf2ff;--muted:#8994aa;--line:#232c40;--accent:#6c5ce7;--shadow:0 20px 60px rgba(0,0,0,.35)}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 10% 0%,rgba(108,92,231,.18),transparent 30%),var(--bg);color:var(--text);min-height:100vh}.login{min-height:100vh;display:grid;place-items:center;padding:20px}.card{width:min(420px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:var(--shadow)}.top{display:flex;align-items:center;gap:12px;margin-bottom:20px}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(135deg,var(--accent),#00c2ff);display:grid;place-items:center;font-weight:900;color:#fff}.top h1{margin:0}.top small,p{color:var(--muted)}input{font:inherit;width:100%;padding:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;margin:8px 0 14px;outline:none}.btn{font:inherit;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:10px 14px;cursor:pointer}.btn.primary{width:100%;background:linear-gradient(135deg,var(--accent),#8e7cff);border:0;color:#fff}
+</style>
+</head>
+<body>
+<main class="login">
+  <section class="card">
+    <div class="top"><div class="logo">⚙</div><div><h1>Administration</h1><small>Accès réservé aux administrateurs</small></div></div>
+    <p>Connectez-vous avec un compte possédant le rôle administrateur dans Firebase.</p>
+    <input id="lastName" type="text" placeholder="Nom" autocomplete="family-name">
+    <input id="firstName" type="text" placeholder="Prénom" autocomplete="given-name">
+    <input id="password" type="password" placeholder="Mot de passe" autocomplete="current-password">
+    <button class="btn primary" id="loginAdmin">Entrer</button>
+    <p id="status" style="font-size:13px"></p>
+  </section>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {getDatabase,ref as dbRef,get as dbGet,update as dbUpdate} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+const firebaseConfig={
+  apiKey:"AIzaSyBpKHxkops7gzivSx6zwsVolRe34NXsgUA",
+  authDomain:"messagerie-cd2ba.firebaseapp.com",
+  databaseURL:"https://messagerie-cd2ba-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:"messagerie-cd2ba",
+  storageBucket:"messagerie-cd2ba.firebasestorage.app",
+  messagingSenderId:"846140280738",
+  appId:"1:846140280738:web:03a0fb23ca8fa0e59bacfb",
+  measurementId:"G-S8CC69WLD4"
+};
+
+const rtdb=getDatabase(initializeApp(firebaseConfig));
+const $=id=>document.getElementById(id);
+const normalizeName=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+const buildUserKey=(first,last)=>{
+  const firstKey=normalizeName(first).replace(/\s+/g,"_");
+  const lastKey=normalizeName(last).replace(/\s+/g,"_");
+  return [firstKey,lastKey].filter(Boolean).join("_").replace(/_+/g,"_").replace(/^_|_$/g,"");
+};
+const isStrongPassword=password=>/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{12,}$/.test(password);
+
+async function resolveUserKey(firstName,lastName){
+  const primary=buildUserKey(firstName,lastName);
+  const legacy=primary.replace(/_/g,".");
+  for(const key of [primary,legacy]){
+    const snap=await dbGet(dbRef(rtdb,`users/${key}`));
+    if(snap.exists()) return {key,user:snap.val()};
+  }
+  return null;
+}
+
+$("loginAdmin").onclick=async()=>{
+  try{
+    $("status").textContent="Vérification…";
+    const firstName=$("firstName").value.trim();
+    const lastName=$("lastName").value.trim();
+    const password=$("password").value.trim();
+    if(!firstName||!lastName) throw new Error("Renseignez votre nom et votre prénom.");
+    if(!password) throw new Error("Renseignez un mot de passe.");
+    const result=await resolveUserKey(firstName,lastName);
+    if(!result) throw new Error("Compte introuvable dans la base temps réel.");
+    if((result.user.password||"")!==password) throw new Error("Mot de passe incorrect.");
+    if(result.key==="esteban_hanot" && Number(result.user.level)!==1){
+      await dbUpdate(dbRef(rtdb,`users/${result.key}`),{role:"admin",level:1});
+      result.user.level=1;
+    }
+    if(Number(result.user.level)!==1) throw new Error("Ce compte n’est pas administrateur.");
+    if(!isStrongPassword(password)){
+      const securePassword=prompt("Votre mot de passe admin doit contenir au moins 12 caractères, une majuscule, une minuscule, un chiffre et un symbole. Entrez le nouveau mot de passe :");
+      if(securePassword===null) throw new Error("Le changement de mot de passe est obligatoire.");
+      if(!isStrongPassword(securePassword)) throw new Error("Mot de passe trop faible. Recommencez avec 12 caractères, une majuscule, une minuscule, un chiffre et un symbole.");
+      await dbUpdate(dbRef(rtdb,`users/${result.key}`),{password:securePassword});
+    }
+    sessionStorage.setItem("adminSessionKey",result.key);
+    sessionStorage.setItem("adminSessionAuthorized","true");
+    window.location.replace("admin.html");
+  }catch(error){$("status").textContent=error.message;}
+};
+
+if(sessionStorage.getItem("adminSessionAuthorized")==="true") window.location.replace("admin.html");
+</script>
+</body>
+</html>
