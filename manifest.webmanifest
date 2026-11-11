@@ -1,0 +1,15 @@
+{
+  "name": "Messagerie",
+  "short_name": "Messagerie",
+  "description": "Messagerie privée avec appels audio et messages vocaux.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#060b14",
+  "theme_color": "#5f60e8",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

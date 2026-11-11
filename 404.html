@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page introuvable — Messagerie</title>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#080b13;color:#edf2ff;min-height:100vh;display:grid;place-items:center;text-align:center;padding:20px}
+  h1{font-size:64px;margin:0;color:#8e7cff}
+  p{color:#8994aa}
+  a{color:#8e7cff;font-weight:700;text-decoration:none}
+  a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div>
+  <h1>404</h1>
+  <p>Cette page n'existe pas. La messagerie se trouve à la racine du site.</p>
+  <p><a id="home" href="./index.html">← Ouvrir la messagerie</a></p>
+</div>
+<script>
+// Remonte d'un dossier vers la racine du site (utile sur GitHub Pages).
+(function(){
+  var parts = location.pathname.split("/");
+  parts.pop();
+  var target = parts.join("/") + "/";
+  var home = document.getElementById("home");
+  if (target && target !== location.pathname) {
+    if (home) home.href = target;
+    location.replace(target);
+  }
+})();
+</script>
+</body>
+</html>
