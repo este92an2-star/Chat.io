@@ -10,7 +10,7 @@ Messagerie temps réel avec **appels audio** et **messages vocaux**, 100 % stati
 - 🎙 **Messages vocaux** — compatibles iPhone et Android (conversion automatique en WAV si nécessaire)
 - 🖼 Photos re-compressées automatiquement côté expéditeur ; fichiers jusqu'à 6 Mo — tout est stocké dans la base de données
 - 📞 **Appels audio** en peer-to-peer (WebRTC) : sonnerie, muet, refus, « pas de réponse », détection de coupure
-- 📱 Ajoutable à l'écran d'accueil du téléphone (manifeste + icônes)
+- 📱 Bouton **⬇ Installer** qui installe l'application (PWA) — sur iPhone, guide vers « Partager → Sur l'écran d'accueil »
 - ⚙️ Centre d'administration (`connection.html`)
 
 ## Déploiement sur GitHub Pages
