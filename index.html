@@ -60,7 +60,7 @@ button,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;us
     <div class="search"><span>⌕</span><input id="search" placeholder="Rechercher une discussion…"></div>
     <div id="chats"></div>
     <div style="padding:14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">⚙️ Paramètres</button><button class="btn" id="changePasswordBtn">🔑 Mot de passe</button><button class="btn" id="deleteAccountBtn">🗑 Compte</button><button class="btn" id="goAdmin" style="display:none">⚙ Admin</button><button class="btn" id="logout">↪ Déconnexion</button>
+      <button class="btn" id="theme">☾ Thème</button><button class="btn" id="customize">⚙️ Paramètres</button><button class="btn" id="reloadBtn">↻ Recharger</button><button class="btn" id="changePasswordBtn">🔑 Mot de passe</button><button class="btn" id="deleteAccountBtn">🗑 Compte</button><button class="btn" id="goAdmin" style="display:none">⚙ Admin</button><button class="btn" id="logout">↪ Déconnexion</button>
     </div>
     <div class="meRow"><div class="avatar" id="meAvatar">?</div><b id="meName"></b></div>
   </aside>
@@ -404,6 +404,7 @@ if("serviceWorker" in navigator){
     showToast(t==="dark"?"Thème sombre activé":"Thème clair activé","success");
   }
   $("theme").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
+  $("reloadBtn").onclick=()=>location.reload();
   let deferredPrompt=null;
   window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;});
   window.addEventListener("appinstalled",()=>{deferredPrompt=null;showToast("Application installée 🎉","success");});
