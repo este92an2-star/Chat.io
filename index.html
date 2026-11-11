@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#5f60e8">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icon-192.png">
-  <title>Messagerie — Firebase</title>
+  <title>Messagerie</title>
   <style>
 button,input{font:inherit}
 button,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
@@ -261,6 +261,7 @@ if("serviceWorker" in navigator){
     await loadUsersCache();
     settings={accent:null,theme:null,wallpaper:null,wallColor:null,photo:null,...(me.settings||{})};
     applySettings();
+    listenSettings();
     updateAdminButton();
     $("login").classList.add("hidden");
     await listenChats();
@@ -276,6 +277,7 @@ if("serviceWorker" in navigator){
     await loadUsersCache();
     settings={accent:null,theme:null,wallpaper:null,wallColor:null,photo:null,...(me.settings||{})};
     applySettings();
+    listenSettings();
     updateAdminButton();
     $("login").classList.add("hidden");
     await listenChats();
@@ -375,6 +377,26 @@ if("serviceWorker" in navigator){
   }
   async function loadUsersCache(){
     try{ const snap=await dbGet(dbRef(rtdb,"users")); usersCache=snap.val()||{}; }catch(e){ usersCache={}; }
+  }
+  function cleanSettings(o){
+    const r={};
+    for(const k of ["accent","theme","wallpaper","wallColor","photo"]) if(o&&o[k]!=null) r[k]=o[k];
+    return r;
+  }
+  let settingsUnsub=null;
+  // Synchronisation temps reel : si le profil est modifie depuis un autre
+  // appareil du meme compte, les changements s'appliquent ici tout de suite.
+  function listenSettings(){
+    if(!me) return;
+    if(settingsUnsub) settingsUnsub();
+    settingsUnsub=onValue(dbRef(rtdb,`users/${me.uid}/settings`),snap=>{
+      const remote=snap.val();
+      if(!remote) return;
+      if(JSON.stringify(cleanSettings(remote))===JSON.stringify(cleanSettings(settings))) return;
+      settings={accent:null,theme:null,wallpaper:null,wallColor:null,photo:null,...remote};
+      applySettings();
+      showToast("Profil mis à jour depuis un autre appareil ⚙️","info");
+    });
   }
   function setTheme(t){
     settings.theme=t; document.documentElement.dataset.theme=t; localStorage.setItem("messagerie-theme",t);
@@ -483,6 +505,7 @@ if("serviceWorker" in navigator){
     await dbRemove(dbRef(rtdb,`users/${me.uid}`));
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    if(settingsUnsub){ settingsUnsub(); settingsUnsub=null; }
     setComposerVisible(false);
     updateAdminButton();
     if(unsubChats) unsubChats();
@@ -557,6 +580,7 @@ if("serviceWorker" in navigator){
   $("logout").onclick=async()=>{
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    if(settingsUnsub){ settingsUnsub(); settingsUnsub=null; }
     setComposerVisible(false);
     updateAdminButton();
     teardownCallListeners();

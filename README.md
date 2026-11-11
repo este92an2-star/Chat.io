@@ -12,7 +12,7 @@ Messagerie temps réel avec **appels audio** et **messages vocaux**, 100 % stati
 - 📞 **Appels audio** en peer-to-peer (WebRTC) : sonnerie, muet, refus, « pas de réponse », détection de coupure
 - 📱 Bouton **⬇ Installer** qui installe l'application (PWA) — sur iPhone, guide vers « Partager → Sur l'écran d'accueil »
 - 🔄 **Mise à jour automatique** : une nouvelle version du site s'applique seule à la prochaine ouverture (aucune désinstallation nécessaire)
-- ⚙️ **Paramètres** : photo de profil, fond de discussion (image ou couleur), couleur principale (design uni, sans dégradé), thème clair/sombre — sauvegardés dans la base, ils vous suivent sur tous vos appareils
+- ⚙️ **Paramètres** : photo de profil, fond de discussion (image ou couleur), couleur principale (design uni, sans dégradé), thème clair/sombre — **synchronisés en temps réel sur tous les appareils du compte** (un changement sur le téléphone s'applique aussitôt sur le PC)
 - ⚙️ Centre d'administration (`connection.html`)
 
 ## Déploiement sur GitHub Pages
