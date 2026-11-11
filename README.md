@@ -1,6 +1,6 @@
 # ✦ Messagerie (Chat.io)
 
-Messagerie temps réel avec **appels audio** et **messages vocaux**, 100 % statique (aucun serveur à gérer) : chaque page HTML embarque son CSS et son JavaScript — **aucun fichier `.css` ni `.js` séparé** — et dialogue directement avec **Firebase Realtime Database**. Les messages vocaux, photos et fichiers sont stockés **dans la base de données elle-même** (data URL) : **Firebase Storage n'est pas nécessaire**.
+Messagerie temps réel avec **appels audio** et **messages vocaux**, 100 % statique (aucun serveur à gérer) : chaque page HTML embarque son CSS et son JavaScript — le seul fichier `.js` externe est `sw.js` (obligatoire et requis par les navigateurs pour la **mise à jour automatique**) — et dialogue directement avec **Firebase Realtime Database**. Les messages vocaux, photos et fichiers sont stockés **dans la base de données elle-même** (data URL) : **Firebase Storage n'est pas nécessaire**.
 
 ## Fonctionnalités
 
@@ -11,6 +11,7 @@ Messagerie temps réel avec **appels audio** et **messages vocaux**, 100 % stati
 - 🖼 Photos re-compressées automatiquement côté expéditeur ; fichiers jusqu'à 6 Mo — tout est stocké dans la base de données
 - 📞 **Appels audio** en peer-to-peer (WebRTC) : sonnerie, muet, refus, « pas de réponse », détection de coupure
 - 📱 Bouton **⬇ Installer** qui installe l'application (PWA) — sur iPhone, guide vers « Partager → Sur l'écran d'accueil »
+- 🔄 **Mise à jour automatique** : une nouvelle version du site s'applique seule à la prochaine ouverture (aucune désinstallation nécessaire)
 - ⚙️ Centre d'administration (`connection.html`)
 
 ## Déploiement sur GitHub Pages
@@ -34,4 +35,5 @@ La configuration (constante `firebaseConfig`) est présente **dans le script de 
 | `connection.html` | Connexion administrateur — autonome |
 | `admin.html` | Centre d'administration — autonome |
 | `manifest.webmanifest` + `icon-192.png` + `icon-512.png` | Icône / écran d'accueil |
+| `sw.js` | Mise à jour automatique + mode hors-ligne (reseau d'abord, cache en secours) |
 | `404.html` | Redirection vers l'accueil sur GitHub Pages (autonome, volontairement) |

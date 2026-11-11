@@ -96,6 +96,17 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
+
+// Mise a jour automatique : quand une nouvelle version du site est publiee,
+// la page se recharge toute seule (pas besoin de desinstaller/reinstaller).
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("./sw.js").catch(()=>{}); });
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(sessionStorage.getItem("sw-reloaded")) return;
+    sessionStorage.setItem("sw-reloaded","1");
+    location.reload();
+  });
+}
   let me=null, active=null, unsubChats=null, unsubMessages=null, recorder=null, chunks=[];
   let incomingCallUnsub=null;
   let callListeners = {}; // { convId: unsubscribe }
