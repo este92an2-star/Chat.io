@@ -63,7 +63,7 @@ button,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;us
       <button class="btn round" id="headerMore" title="Plus d'actions">⋯</button>
     </header>
     <section id="messages"><div class="empty">Choisissez une discussion dans la colonne de gauche, ou créez-en une pour commencer.</div></section>
-    <footer class="composer">
+    <footer class="composer hidden">
       <input id="messageInput" placeholder="Écrire un message…" autocomplete="off" aria-label="Message">
       <input id="fileInput" type="file" accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip" class="hidden">
       <button class="btn round" id="attach" title="Joindre un fichier">＋</button>
@@ -100,6 +100,12 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
   let incomingCallUnsub=null;
   let callListeners = {}; // { convId: unsubscribe }
   let voiceRecordingStartedAt=0, voiceReadyBlob=null, voiceReadyMeta=null, voiceTimerInterval=null;
+
+  // La barre d'ecriture n'apparait que lorsqu'une conversation est ouverte.
+  function setComposerVisible(v){
+    const c=document.querySelector(".composer");
+    if(c) c.classList.toggle("hidden",!v);
+  }
 
   function encodeEmail(email) {
     return String(email || "").trim().toLowerCase().replace(/\./g, ',');
@@ -351,6 +357,7 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
     await dbRemove(dbRef(rtdb,`users/${me.uid}`));
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    setComposerVisible(false);
     updateAdminButton();
     if(unsubChats) unsubChats();
     if(unsubMessages) unsubMessages();
@@ -405,7 +412,7 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
       await dbRemove(dbRef(rtdb,`groups/${active.id}`));
       await dbRemove(dbRef(rtdb,`users/${me.uid}/conversations/${active.id}`));
       await dbRemove(dbRef(rtdb,`users/${me.uid}/groups/${active.id}`));
-      active=null; $("messages").innerHTML='<div class="empty">Groupe supprimé.</div>';
+      active=null; setComposerVisible(false); $("messages").innerHTML='<div class="empty">Groupe supprimé.</div>';
       showToast("Groupe supprimé");
       return;
     }
@@ -424,6 +431,7 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
   $("logout").onclick=async()=>{
     sessionStorage.removeItem("messagerieUserKey");
     me=null; active=null;
+    setComposerVisible(false);
     updateAdminButton();
     teardownCallListeners();
     if(unsubChats) unsubChats();
@@ -459,6 +467,7 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
   async function openChat(c){
     active=c;$("headerName").textContent=c.type==="group"?c.name:(c.name||"Conversation privée");
     $("sidebar").classList.remove("mobile"); // mobile : referme la liste des discussions
+    setComposerVisible(true);
     $("headerAvatar").textContent=initials($("headerName").textContent);$("headerStatus").textContent=c.type==="group"?"Groupe sécurisé":"Conversation privée";
     if(unsubMessages)unsubMessages();
     // Les appels entrants sont surveillés globalement par setupCallListeners() pour toutes les conversations.
@@ -861,7 +870,7 @@ const app = initializeApp(firebaseConfig), rtdb = getDatabase(app);
     if(active.type==="group"){
       for(const uid of active.members||[]){ if(uid!==me.uid){ await dbRemove(dbRef(rtdb,`users/${uid}/conversations/${active.id}`)); } }
     }
-    active=null;$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
+    active=null;setComposerVisible(false);$("messages").innerHTML='<div class="empty">Conversation supprimée.</div>';
   };
 
   $("mobileMenu").onclick=()=>$("sidebar").classList.toggle("mobile");
